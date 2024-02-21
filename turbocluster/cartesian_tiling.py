@@ -92,3 +92,5 @@ class CartesianTiling:
         self.sort_index = cp.argsort(self.tile_index[:, 2] * npix_x * npix_y
                                      + self.tile_index[:, 1] * npix_x +
                                      self.tile_index[:, 0])
+
+        self.tile_index = self.tile_index[self.sort_index, :]
