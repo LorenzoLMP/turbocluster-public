@@ -85,12 +85,12 @@ class CartesianTiling:
         find_tile_index[blocks_1d, threadsperblock](
             self._pos, self.npixs, self.tile_widths_internal, self.tile_index)
 
-        get_tile_information[blocks_1d, threadsperblock](
-            self.tile_index, self.particles_per_tile,
-            self.start_index_for_tile)
-
         self.sort_index = cp.argsort(self.tile_index[:, 2] * npix_x * npix_y
                                      + self.tile_index[:, 1] * npix_x +
                                      self.tile_index[:, 0])
 
         self.tile_index = self.tile_index[self.sort_index, :]
+
+        get_tile_information[blocks_1d, threadsperblock](
+            self.tile_index, self.particles_per_tile,
+            self.start_index_for_tile)
