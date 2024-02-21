@@ -6,7 +6,7 @@ from numba import cuda
 def find_tile_single_dim(particle_pos, nx, tile_width):
     """
     """
-    tile_index = particle_pos // tile_width
+    tile_index = int(particle_pos / tile_width)
     return tile_index
 
 
