@@ -61,7 +61,7 @@ class SmoothingFilter:
 
         self.gpu_variables['pos'] = self.gpu_variables['pos'][self.tile.sort_index, :]
 
-        Np = self.gpu_variables['pos'].shape[0]
+        self.Np = Np = self.gpu_variables['pos'].shape[0]
 
         self.blocks_1d = (Np + (threadsperblock - 1)) // threadsperblock
         self.threadsperblock = threadsperblock
