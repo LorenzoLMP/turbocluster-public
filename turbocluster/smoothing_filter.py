@@ -214,7 +214,7 @@ class SmoothingFilter:
 
         # Do the sorting
         self.gpu_variables['pos'] = self.gpu_variables['pos'][self.tile.sort_index, :]
-        self.gpu_variables['hsml'] = self.gpu_variables['hsml'][self.tile.sort_index, :]
+        self.gpu_variables['hsml'] = self.gpu_variables['hsml'][self.tile.sort_index]
 
         self.Np = Np = self.gpu_variables['pos'].shape[0]
 
