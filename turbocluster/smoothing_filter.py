@@ -1,9 +1,11 @@
 import numpy as np
 import cupy as cp
-# from numba import cuda
+from numba import cuda
+import math
 # import numba
 import paicos as pa
 from .cartesian_tiling import CartesianTiling
+
 
 @cuda.jit()
 def apply_filter(pos, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
@@ -28,13 +30,11 @@ def apply_filter(pos, tile_index, start_index_for_tile, particles_per_tile, tile
 
     zmin = center[2] - widths[2]/2
     zmax = center[2] + widths[2]/2
-    
 
     # in theory we can have different filter lengths per particle
     # for the iterative scheme in Vazza this number is gradually increased
     # maybe this function needs to be reworked in that case...
     filter_length = filter_lengths[ip]
-    
 
     sidelength_x, sidelength_y, sidelength_z = widths
     nx, ny, nz = npixs
@@ -46,7 +46,6 @@ def apply_filter(pos, tile_index, start_index_for_tile, particles_per_tile, tile
             if (zp > zmin) and (zp < zmax):
                 inside_domain = True
 
-    
     if inside_domain:
 
         ip_tile_x = tile_index[ip, 0]
@@ -54,16 +53,17 @@ def apply_filter(pos, tile_index, start_index_for_tile, particles_per_tile, tile
         ip_tile_z = tile_index[ip, 2]
 
         # tile_pos = tile_positions[tile_x, tile_y, tile_z]
-        #tile_widths
+        # tile_widths
         weight = 0.0
         weight_tmp = 0.0
 
         filter_window = 1
-        # for gaussian filter we actually want to look for particles up to 4 times 
-        # filter_length far away from the source particle 
-        if filter_type == 1: filter_window = 4
-        
-        # this could be made smarter if one finds just the tiles that intersect 
+        # for gaussian filter we actually want to look for particles up to 4 times
+        # filter_length far away from the source particle
+        if filter_type == 1:
+            filter_window = 4
+
+        # this could be made smarter if one finds just the tiles that intersect
         # the sphere of radius filter_length
         # ip_tile_x_min = ((xp - xmin) - filter_window*filter_length)//tile_widths[0]
         # ip_tile_x_max = ((xp - xmin) + filter_window*filter_length)//tile_widths[0]
@@ -74,21 +74,27 @@ def apply_filter(pos, tile_index, start_index_for_tile, particles_per_tile, tile
         # ip_tile_z_min = ((zp - zmin) - filter_window*filter_length)//tile_widths[2]
         # ip_tile_z_max = ((zp - zmin) + filter_window*filter_length)//tile_widths[2]
 
-        ip_tile_x_min = ip_tile_x - int((filter_window*filter_length)/tile_widths[0] + 1 )
-        ip_tile_x_max = ip_tile_x + int((filter_window*filter_length)/tile_widths[0] + 1 )
+        ip_tile_x_min = ip_tile_x - \
+            int((filter_window*filter_length)/tile_widths[0] + 1)
+        ip_tile_x_max = ip_tile_x + \
+            int((filter_window*filter_length)/tile_widths[0] + 1)
 
-        ip_tile_y_min = ip_tile_y - int((filter_window*filter_length)/tile_widths[1] + 1 )
-        ip_tile_y_max = ip_tile_y + int((filter_window*filter_length)/tile_widths[1] + 1 )
+        ip_tile_y_min = ip_tile_y - \
+            int((filter_window*filter_length)/tile_widths[1] + 1)
+        ip_tile_y_max = ip_tile_y + \
+            int((filter_window*filter_length)/tile_widths[1] + 1)
 
-        ip_tile_z_min = ip_tile_z - int((filter_window*filter_length)/tile_widths[2] + 1 )
-        ip_tile_z_max = ip_tile_z + int((filter_window*filter_length)/tile_widths[2] + 1 )
+        ip_tile_z_min = ip_tile_z - \
+            int((filter_window*filter_length)/tile_widths[2] + 1)
+        ip_tile_z_max = ip_tile_z + \
+            int((filter_window*filter_length)/tile_widths[2] + 1)
 
         # ip_tile_x_min = find_tile_single_dim(xp - filter_window*filter_length, nx, tile_widths[0])
         # ip_tile_x_max = find_tile_single_dim(xp + filter_window*filter_length, nx, tile_widths[0])
-        
+
         # ip_tile_y_min = find_tile_single_dim(yp - filter_window*filter_length, ny, tile_widths[1])
         # ip_tile_y_max = find_tile_single_dim(yp + filter_window*filter_length, ny, tile_widths[1])
-        
+
         # ip_tile_z_min = find_tile_single_dim(zp - filter_window*filter_length, nz, tile_widths[2])
         # ip_tile_z_max = find_tile_single_dim(zp + filter_window*filter_length, nz, tile_widths[2])
 
@@ -96,33 +102,40 @@ def apply_filter(pos, tile_index, start_index_for_tile, particles_per_tile, tile
             for tile_x in range(ip_tile_x_min, ip_tile_x_max+1):
                 for tile_y in range(ip_tile_y_min, ip_tile_y_max+1):
                     for tile_z in range(ip_tile_z_min, ip_tile_z_max+1):
-            # tile_x = ip_tile_x
-            # tile_y = ip_tile_y
-            # tile_z = ip_tile_z
-                        start_index = start_index_for_tile[tile_x, tile_y, tile_z]
-                        n_particles = particles_per_tile[tile_x, tile_y, tile_z]
-            
+                        # tile_x = ip_tile_x
+                        # tile_y = ip_tile_y
+                        # tile_z = ip_tile_z
+                        start_index = start_index_for_tile[tile_x,
+                                                           tile_y, tile_z]
+                        n_particles = particles_per_tile[tile_x,
+                                                         tile_y, tile_z]
+
                         for ip_other in range(start_index, start_index + n_particles):
                             dist = distance(pos[ip], pos[ip_other])
                             if dist < filter_length:
                                 weight_tmp = 1.0
                                 weight += weight_tmp
-                                smooth_var[ip] += variable[ip_other] * weight_tmp
+                                smooth_var[ip] += variable[ip_other] * \
+                                    weight_tmp
                                 # smooth_var[ip] += weight_tmp
-                            
+
         elif filter_type == 1:
             for tile_x in range(ip_tile_x_min, ip_tile_x_max+1):
                 for tile_y in range(ip_tile_y_min, ip_tile_y_max+1):
                     for tile_z in range(ip_tile_z_min, ip_tile_z_max+1):
-                        start_index = start_index_for_tile[tile_x, tile_y, tile_z]
-                        n_particles = particles_per_tile[tile_x, tile_y, tile_z]
-    
+                        start_index = start_index_for_tile[tile_x,
+                                                           tile_y, tile_z]
+                        n_particles = particles_per_tile[tile_x,
+                                                         tile_y, tile_z]
+
                         for ip_other in range(start_index, start_index + n_particles):
                             dist = distance(pos[ip], pos[ip_other])
                             if dist < filter_window*filter_length:
-                                weight_tmp = gaussian_kernel(dist, filter_length)
+                                weight_tmp = gaussian_kernel(
+                                    dist, filter_length)
                                 weight += weight_tmp
-                                smooth_var[ip] += variable[ip_other] * weight_tmp
+                                smooth_var[ip] += variable[ip_other] * \
+                                    weight_tmp
         if weight > 0.:
             smooth_var[ip] /= weight
             # pass
@@ -133,22 +146,20 @@ def apply_filter(pos, tile_index, start_index_for_tile, particles_per_tile, tile
     #     smooth_var[ip] = -2
 
 
-
 @cuda.jit(device=True, inline=True)
 def distance(pos, pos_other):
-    dist = math.sqrt((pos[0] - pos_other[0])**2 + 
-                     (pos[1] - pos_other[1])**2 + 
+    dist = math.sqrt((pos[0] - pos_other[0])**2 +
+                     (pos[1] - pos_other[1])**2 +
                      (pos[2] - pos_other[2])**2)
     return dist
 
-    
+
 @cuda.jit(device=True, inline=True)
 def gaussian_kernel(dist, filter_length):
 
     weight = math.exp(-0.5*(dist/filter_length)**2)
-    
-    return weight
 
+    return weight
 
 
 class SmoothingFilter:
@@ -255,11 +266,10 @@ class SmoothingFilter:
             self.gpu_variables['widths'] = cp.array(self.widths)
             self.gpu_variables['center'] = cp.array(self.center)
 
-
-    def _apply_filter_gpu(self, variable_str,filter_type):
-        pos = self.gpu_variables['pos'] 
+    def _apply_filter_gpu(self, variable_str, filter_type):
+        pos = self.gpu_variables['pos']
         # - self.tile.off_sets[None,:]
-        tile_index = self.tile.tile_index 
+        tile_index = self.tile.tile_index
         start_index_for_tile = self.tile.start_index_for_tile
         particles_per_tile = self.tile.particles_per_tile
         tile_widths = self.tile.tile_widths
@@ -272,12 +282,12 @@ class SmoothingFilter:
             filter_type = 0
         elif filter_type == "gaussian":
             filter_type = 1
-        smooth_var = cp.zeros_like(variable) 
-        
-        apply_filter[self.blocks_1d, self.threadsperblock](pos, tile_index, start_index_for_tile, 
+        smooth_var = cp.zeros_like(variable)
+
+        apply_filter[self.blocks_1d, self.threadsperblock](pos, tile_index, start_index_for_tile,
                                                            particles_per_tile, tile_widths,
-                 variable, npixs, center, widths, filter_lengths, smooth_var, filter_type)
-        
+                                                           variable, npixs, center, widths, filter_lengths, smooth_var, filter_type)
+
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
     def filter_variable(self, variable, filter_length, filter_type="mean"):
@@ -297,7 +307,6 @@ class SmoothingFilter:
 
         assert len(variable.shape) == 1, 'only scalars can be filtered'
 
-        
         variable = variable[self.index]
 
         if variable_str in self.gpu_variables and variable_str != 'input_variable':
@@ -316,13 +325,12 @@ class SmoothingFilter:
         # send filter_length to gpu
 
         self.gpu_variables['filter_lengths'] = cp.ones(self.Np)*filter_length
-        
+
         # Do the filtering
-        smooth_variable = self._apply_filter_gpu(variable_str,filter_type)
-        
+        smooth_variable = self._apply_filter_gpu(variable_str, filter_type)
 
         if isinstance(variable, pa.units.PaicosQuantity):
-            smooth_variable = smooth_variable * variable.unit_quantity 
+            smooth_variable = smooth_variable * variable.unit_quantity
 
         return smooth_variable
 
