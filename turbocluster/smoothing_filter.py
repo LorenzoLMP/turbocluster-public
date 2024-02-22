@@ -8,7 +8,7 @@ from .cartesian_tiling import CartesianTiling
 
 
 @cuda.jit()
-def apply_filter(pos, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
+def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
                  variable, weights, npixs, center, widths, filter_lengths, smooth_var, filter_type):
     """
     filter_lengths is an array of size pos.shape([0])
@@ -22,14 +22,14 @@ def apply_filter(pos, tile_index, start_index_for_tile, particles_per_tile, tile
     yp = pos[ip, 1]
     zp = pos[ip, 2]
 
-    xmin = center[0] - widths[0] / 2
-    xmax = center[0] + widths[0] / 2
+    xmin = center[0] - widths[0] / 2 - 2.0 * hsml[ip]
+    xmax = center[0] + widths[0] / 2 + 2.0 * hsml[ip]
 
-    ymin = center[1] - widths[1] / 2
-    ymax = center[1] + widths[1] / 2
+    ymin = center[1] - widths[1] / 2 - 2.0 * hsml[ip]
+    ymax = center[1] + widths[1] / 2 + 2.0 * hsml[ip]
 
-    zmin = center[2] - widths[2] / 2
-    zmax = center[2] + widths[2] / 2
+    zmin = center[2] - widths[2] / 2 - 2.0 * hsml[ip]
+    zmax = center[2] + widths[2] / 2 + 2.0 * hsml[ip]
 
     # in theory we can have different filter lengths per particle
     # for the iterative scheme in Vazza this number is gradually increased
@@ -268,6 +268,7 @@ class SmoothingFilter:
 
     def _apply_filter_gpu(self, variable_str, weight, filter_type):
         pos = self.gpu_variables['pos']
+        hsml = self.gpu_variables['hsml']
         # - self.tile.off_sets[None,:]
         tile_index = self.tile.tile_index
         start_index_for_tile = self.tile.start_index_for_tile
@@ -293,7 +294,7 @@ class SmoothingFilter:
         else:
             weights = cp.ones_like(variable)
 
-        apply_filter[self.blocks_1d, self.threadsperblock](pos, tile_index, start_index_for_tile,
+        apply_filter[self.blocks_1d, self.threadsperblock](pos, hsml, tile_index, start_index_for_tile,
                                                            particles_per_tile, tile_widths,
                                                            variable, weights, npixs, center, widths, filter_lengths, smooth_var, filter_type)
 
