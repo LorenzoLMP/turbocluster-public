@@ -47,7 +47,8 @@ class CartesianTiling:
     """
     """
 
-    def __init__(self, positions, npix=128, threadsperblock=256):
+    def __init__(self, positions, center, widths, buffer_length,
+                 npix=128, threadsperblock=256):
 
         Np = positions.shape[0]
 
@@ -56,23 +57,19 @@ class CartesianTiling:
         # Copy positions
         self._pos = cp.array(positions)
 
-        # Convert self._position to units from [0, 1) * 2**L
-        self.off_sets = cp.min(self._pos, axis=0)
+        self.tilebox_widths = widths + 2 * buffer_length
+
+        npix_x = npix
+        npix_y = int(self.tilebox_widths[1] / self.tilebox_widths[0] * npix)
+        npix_z = int(self.tilebox_widths[2] / self.tilebox_widths[0] * npix)
+
+        self.npixs = cp.array([npix_x, npix_y, npix_z])
+
+        self.off_sets = center - self.tilebox_widths / 2.0
+
+        self.tile_widths = self.tilebox_widths / self.npixs
+
         self._pos -= self.off_sets[None, :]
-
-        max_pos = cp.max(self._pos, axis=0)
-
-        self.conversion_factor = (npix - 1) / max_pos[0]
-        self.npixs = (max_pos * self.conversion_factor).astype(int) + 1
-
-        npix_x = int(self.npixs[0])
-        npix_y = int(self.npixs[1])
-        npix_z = int(self.npixs[2])
-
-        self.tile_widths = max_pos / self.npixs
-        self.tile_widths_internal = self.tile_widths * self.conversion_factor
-
-        self._pos *= self.conversion_factor
 
         # Get tile information
         self.tile_index = cp.zeros((Np, 3), dtype=int)
@@ -83,7 +80,7 @@ class CartesianTiling:
             (npix_x, npix_y, npix_z), dtype=int) * Np + 1
 
         find_tile_index[blocks_1d, threadsperblock](
-            self._pos, self.npixs, self.tile_widths_internal, self.tile_index)
+            self._pos, self.npixs, self.tile_widths, self.tile_index)
 
         self.sort_index = cp.argsort(self.tile_index[:, 2] * npix_x * npix_y
                                      + self.tile_index[:, 1] * npix_x +
