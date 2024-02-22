@@ -47,7 +47,7 @@ class CartesianTiling:
     """
     """
 
-    def __init__(self, positions, center, widths, buffer_length,
+    def __init__(self, positions, center, widths, extra_layer_thickness,
                  npix=128, threadsperblock=256):
 
         Np = positions.shape[0]
@@ -57,7 +57,7 @@ class CartesianTiling:
         # Copy positions
         self._pos = cp.array(positions)
 
-        self.tilebox_widths = widths + 2 * buffer_length
+        self.tilebox_widths = widths + 2 * extra_layer_thickness
 
         npix_x = npix
         npix_y = int(self.tilebox_widths[1] / self.tilebox_widths[0] * npix)
