@@ -203,13 +203,13 @@ class SmoothingFilter:
 
         self.extra_layer_thickness = np.max(2 * self.hsml) + self.max_search_radius
         if pa.settings.use_units:
-            extra_layer_thickness = self.extra_layer_thickness.value
+            self.extra_layer_thickness_value = self.extra_layer_thickness.value
         else:
-            extra_layer_thickness = self.extra_layer_thickness
+            self.extra_layer_thickness_value = self.extra_layer_thickness
 
         # Create tiling
         self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'],
-                                    self.gpu_variables['widths'], extra_layer_thickness, npix=npix,
+                                    self.gpu_variables['widths'], self.extra_layer_thickness_value, npix=npix,
                                     threadsperblock=threadsperblock)
 
         # Do the sorting
@@ -284,7 +284,7 @@ class SmoothingFilter:
             filter_type = 1
         smooth_var = cp.zeros_like(variable)
 
-        if cp.max(filter_lengths) > self.extra_layer_thickness:
+        if cp.max(filter_lengths) > self.extra_layer_thickness_value:
             err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
             raise RuntimeError(err_msg)
 
