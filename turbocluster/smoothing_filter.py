@@ -304,14 +304,19 @@ class SmoothingFilter:
             self.gpu_variables[variable_str] = self.gpu_variables[variable_str][
                 self.tile.sort_index]
 
-        return variable_str
+        if isinstance(variable, pa.units.PaicosQuantity):
+            unit_quantity = variable.unit_quantity
+        else:
+            unit_quantity = None
+
+        return variable_str, unit_quantity
 
     def filter_variable(self, variable, filter_length, weight=None, filter_type="mean"):
         """
 
         """
 
-        variable_str = self._send_variable_to_gpu(variable)
+        variable_str, unit_quantity = self._send_variable_to_gpu(variable)
 
         if weight is not None:
             if isinstance(weight, str):
@@ -325,8 +330,8 @@ class SmoothingFilter:
         # Do the filtering
         smooth_variable = self._apply_filter_gpu(variable_str, weight, filter_type)
 
-        if isinstance(variable, pa.units.PaicosQuantity):
-            smooth_variable = smooth_variable * variable.unit_quantity
+        if unit_quantity is not None:
+            smooth_variable = smooth_variable * unit_quantity
 
         return smooth_variable
 
