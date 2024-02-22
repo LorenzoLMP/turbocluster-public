@@ -147,13 +147,13 @@ class SmoothingFilter:
     """
     """
 
-    def __init__(self, snap, center, widths, orientation=None, max_search_radius=None,
-                 npix=128, threadsperblock=256):
+    def __init__(self, snap, center, widths, orientation=None,
+                 max_search_radius=None, npix=128, threadsperblock=256):
 
         if orientation is not None:
             raise RuntimeError('not implemented')
-        # if max_search_radius is None:
-        #     raise RuntimeError('need input')
+        if max_search_radius is None:
+            raise RuntimeError('need input')
 
         self.snap = snap
 
@@ -175,9 +175,6 @@ class SmoothingFilter:
         else:
             self.widths = np.array(widths)
 
-        if max_search_radius is None:
-            max_search_radius = 0.2 * np.max(self.widths)
-
         if hasattr(max_search_radius, 'unit'):
             self.max_search_radius = max_search_radius.copy
             assert max_search_radius.unit == code_length.unit, 'this restriction applies'
@@ -193,28 +190,14 @@ class SmoothingFilter:
 
         self.pos = self.snap["0_Coordinates"]
 
-        # Calculate the smoothing length
-        self.hsml = 2.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
-
-        if pa.settings.use_units:
-            self.hsml = self.hsml.to(self.pos.unit)
-
         self._do_region_selection()
-
-        self.extra_layer_thickness = np.max(2 * self.hsml) + self.max_search_radius
-        if pa.settings.use_units:
-            extra_layer_thickness = self.extra_layer_thickness.value
-        else:
-            extra_layer_thickness = self.extra_layer_thickness
 
         # Create tiling
         self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'],
-                                    self.gpu_variables['widths'], extra_layer_thickness, npix=npix,
+                                    self.gpu_variables['widths'], max_search_radius, npix=npix,
                                     threadsperblock=threadsperblock)
 
-        # Do the sorting
         self.gpu_variables['pos'] = self.gpu_variables['pos'][self.tile.sort_index, :]
-        self.gpu_variables['hsml'] = self.gpu_variables['hsml'][self.tile.sort_index]
 
         self.Np = Np = self.gpu_variables['pos'].shape[0]
 
@@ -229,7 +212,8 @@ class SmoothingFilter:
 
         # Send subset of snapshot to GPU
         # get the index of the region of projection
-        thickness = 2 * self.hsml + self.max_search_radius
+        ones = np.ones(self.snap["0_Coordinates"].shape[0])
+        thickness = self.max_search_radius * ones
         if self.orientation is None:
             get_index = pa.util.get_index_of_cubic_region_plus_thin_layer
             self.index = get_index(self.snap["0_Coordinates"],
@@ -242,7 +226,6 @@ class SmoothingFilter:
                                    self.orientation)
 
         self.pos = self.pos[self.index]
-        self.hsml = self.hsml[self.index]
 
         self._send_data_to_gpu()
 
@@ -250,10 +233,8 @@ class SmoothingFilter:
         self.gpu_variables = {}
         if pa.settings.use_units:
             self.gpu_variables['pos'] = cp.array(self.pos.value)
-            self.gpu_variables['hsml'] = cp.array(self.hsml.value)
         else:
             self.gpu_variables['pos'] = cp.array(self.pos)
-            self.gpu_variables['hsml'] = cp.array(self.hsml)
 
         if self.orientation is not None:
             self.gpu_variables['rotation_matrix'] = cp.array(
@@ -283,10 +264,6 @@ class SmoothingFilter:
         elif filter_type == "gaussian":
             filter_type = 1
         smooth_var = cp.zeros_like(variable)
-
-        if cp.max(filter_lengths) > self.extra_layer_thickness:
-            err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
-            raise RuntimeError(err_msg)
 
         if weight is not None:
             weights = self.gpu_variables[weight]
