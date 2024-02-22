@@ -86,6 +86,10 @@ class CartesianTiling:
                                      + self.tile_index[:, 1] * npix_x +
                                      self.tile_index[:, 0])
 
+        un_sort_index = cp.zeros(Np, dtype=int)
+        un_sort_index[self.sort_index] = cp.arange(Np)
+        self.unsort_index = un_sort_index
+
         self.tile_index = self.tile_index[self.sort_index, :]
 
         get_tile_information[blocks_1d, threadsperblock](
