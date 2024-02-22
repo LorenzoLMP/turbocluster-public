@@ -325,7 +325,11 @@ class SmoothingFilter:
                 raise RuntimeError('has to be a string')
 
         # send filter_length to gpu
-        self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length
+        if isinstance(filter_length, np.ndarray):
+            assert filter_length.shape[0] == self.index.shape[0]
+            self._send_variable_to_gpu(filter_length, gpu_key='filter_lengths')
+        else:
+            self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length
 
         # Do the filtering
         smooth_variable = self._apply_filter_gpu(variable_str, weight, filter_type)
