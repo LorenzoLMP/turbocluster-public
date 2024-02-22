@@ -11,11 +11,11 @@ class SmoothingFilter:
     """
 
     def __init__(self, snap, center, widths, orientation=None,
-                 max_filter_length=None, npix=128, threadsperblock=256):
+                 max_search_radius=None, npix=128, threadsperblock=256):
 
         if orientation is not None:
             raise RuntimeError('not implemented')
-        if max_filter_length is None:
+        if max_search_radius is None:
             raise RuntimeError('need input')
 
         self.snap = snap
@@ -38,13 +38,13 @@ class SmoothingFilter:
         else:
             self.widths = np.array(widths)
 
-        if hasattr(max_filter_length, 'unit'):
-            self.max_filter_length = max_filter_length.copy
-            assert max_filter_length.unit == code_length.unit, 'this restriction applies'
+        if hasattr(max_search_radius, 'unit'):
+            self.max_search_radius = max_search_radius.copy
+            assert max_search_radius.unit == code_length.unit, 'this restriction applies'
         elif pa.settings.use_units:
-            self.max_filter_length = np.array(max_filter_length) * code_length
+            self.max_search_radius = np.array(max_search_radius) * code_length
         else:
-            self.max_filter_length = np.array(max_filter_length)
+            self.max_search_radius = np.array(max_search_radius)
 
         if orientation is None:
             self.orientation = None
@@ -56,7 +56,8 @@ class SmoothingFilter:
         self._do_region_selection()
 
         # Create tiling
-        self.tile = CartesianTiling(self.pos, npix=npix,
+        self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'],
+                                    self.gpu_variables['widths'], max_search_radius, npix=npix,
                                     threadsperblock=threadsperblock)
 
         self.gpu_variables['pos'] = self.gpu_variables['pos'][self.tile.sort_index, :]
@@ -75,7 +76,7 @@ class SmoothingFilter:
         # Send subset of snapshot to GPU
         # get the index of the region of projection
         ones = np.ones(self.snap["0_Coordinates"].shape[0])
-        thickness = self.max_filter_length * ones
+        thickness = self.max_search_radius * ones
         if self.orientation is None:
             get_index = pa.util.get_index_of_cubic_region_plus_thin_layer
             self.index = get_index(self.snap["0_Coordinates"],
