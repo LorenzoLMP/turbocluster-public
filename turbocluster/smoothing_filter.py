@@ -269,7 +269,190 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                 and (zp > zmin) and (zp < zmax)):
                     smooth_var[idOwnParticle] = smoothVarRegister
 
+@cuda.jit(device=True, inline=True)
+def check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                   tile_x, tile_y, tile_z,
+                   delta_x, delta_y, delta_z,
+                   tile_widths, filter_length):
 
+    overlap = False
+
+    xcoord_edge = delta_x
+    if (tile_x > ip_tile_x):
+        xcoord_edge = tile_widths[0] * (tile_x - ip_tile_x - 0.5)
+    elif (tile_x < ip_tile_x):
+        xcoord_edge = tile_widths[0] * (tile_x - ip_tile_x + 0.5)
+
+    ycoord_edge = delta_y
+    if (tile_y > ip_tile_y):
+        ycoord_edge = tile_widths[1] * (tile_y - ip_tile_y - 0.5)
+    elif (tile_y < ip_tile_y):
+        ycoord_edge = tile_widths[1] * (tile_y - ip_tile_y + 0.5)
+
+    zcoord_edge = delta_z
+    if (tile_z > ip_tile_z):
+        zcoord_edge = tile_widths[2] * (tile_z - ip_tile_z - 0.5)
+    elif (tile_z < ip_tile_z):
+        zcoord_edge = tile_widths[2] * (tile_z - ip_tile_z + 0.5)
+        
+    dist2 = (delta_x - xcoord_edge)**2 + \
+            (delta_y - ycoord_edge)**2 + \
+            (delta_z - zcoord_edge)**2
+
+    filt2 = filter_length**2
+    if (filt2 >= dist2):
+        overlap = True
+    
+    return overlap
+
+@cuda.jit()
+def check_particle(pos, hsml, center, widths, isParticleInDomain):
+    """
+    """
+    ip = cuda.grid(1)
+    # each thread is assigned to a particle
+    numParticles = pos.shape[0]
+    isParticleInDomainTmp = 0
+    
+    if (ip < numParticles):
+
+        xp, yp, zp = pos[ip]
+        xmin = center[0] - widths[0] / 2 - 2.0 * hsml[ip]
+        xmax = center[0] + widths[0] / 2 + 2.0 * hsml[ip]
+    
+        ymin = center[1] - widths[1] / 2 - 2.0 * hsml[ip]
+        ymax = center[1] + widths[1] / 2 + 2.0 * hsml[ip]
+    
+        zmin = center[2] - widths[2] / 2 - 2.0 * hsml[ip]
+        zmax = center[2] + widths[2] / 2 + 2.0 * hsml[ip]
+
+        if (xp > xmin) and (xp < xmax):
+            if (yp > ymin) and (yp < ymax):
+                if (zp > zmin) and (zp < zmax):
+                    isParticleInDomainTmp = 1
+            
+
+        isParticleInDomain[ip] = isParticleInDomainTmp
+
+@cuda.jit
+def compactify_particles(pos, tile_index, cumulative_occupancy_flat, isParticleInDomain,
+                         oldIndex):
+    """
+    """
+    ip = cuda.grid(1)
+    numParticles = pos.shape[0]
+    # each thread takes care of a particle
+    if (ip < numParticles):
+        newPos = int(cumulative_occupancy_flat[ip])
+        if (isParticleInDomain[ip] > 0):
+            oldIndex[newPos - 1] = ip
+            
+@cuda.jit()
+def apply_filter_optimized(oldIndex, pos, hsml, tile_index, 
+                     start_index_for_tile, particles_per_tile, tile_widths,
+                     variable, weights, offsets, npixs, center, widths, filter_lengths, 
+                     smooth_var, filter_type):
+    """
+    filter_lengths is an array of size pos.shape([0])
+    type can be "mean" or "gaussian"
+    """
+    # threadindex
+    ip = cuda.grid(1)
+
+    if (ip < oldIndex.shape[0]):
+        oldIp = oldIndex[ip]
+    
+        # particle position
+        xp = pos[oldIp, 0]
+        yp = pos[oldIp, 1]
+        zp = pos[oldIp, 2]
+
+        # in theory we can have different filter lengths per particle
+        # for the iterative scheme in Vazza this number is gradually increased
+        # maybe this function needs to be reworked in that case...
+        filter_length = filter_lengths[oldIp]
+
+        ip_tile_x = tile_index[oldIp, 0]
+        ip_tile_y = tile_index[oldIp, 1]
+        ip_tile_z = tile_index[oldIp, 2]
+    
+        # relative coordinates w.r.t. center of tile
+        delta_x = xp - offsets[0] - (ip_tile_x + 0.5) * tile_widths[0] 
+        delta_y = yp - offsets[1] - (ip_tile_y + 0.5) * tile_widths[1] 
+        delta_z = zp - offsets[2] - (ip_tile_z + 0.5) * tile_widths[2] 
+    
+        # tile_pos = tile_positions[tile_x, tile_y, tile_z]
+        # tile_widths
+        weight = 0.0
+        weight_tmp = 0.0
+        smoothVarRegister = 0.0
+    
+        filter_window = 1
+        # for gaussian filter we actually want to look for particles up to 4 times
+        # filter_length far away from the source particle
+        if filter_type == 1:
+            filter_window = 4
+
+        ip_tile_x_min = ip_tile_x - (- delta_x + \
+                        filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
+        ip_tile_x_max = ip_tile_x + (delta_x +   \
+                        filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
+    
+        ip_tile_y_min = ip_tile_y - (- delta_y + \
+                        filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
+        ip_tile_y_max = ip_tile_y + (delta_y +   \
+                        filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
+    
+        ip_tile_z_min = ip_tile_z - (- delta_z + \
+                        filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
+        ip_tile_z_max = ip_tile_z + (delta_z +   \
+                        filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
+    
+        if filter_type == 0:
+            for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+                for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                    for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                        if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                                          tile_x, tile_y, tile_z,
+                                          delta_x, delta_y, delta_z,
+                                          tile_widths, filter_length):
+
+                            start_index = start_index_for_tile[tile_x,
+                                                               tile_y, tile_z]
+                            n_particles = particles_per_tile[tile_x,
+                                                             tile_y, tile_z]
+        
+                            for ip_other in range(start_index, start_index + n_particles):
+                                dist = distance(pos[oldIp], pos[ip_other])
+                                if dist < filter_length:
+                                    weight_tmp = 1.0 * weights[ip_other]
+                                    weight += weight_tmp
+                                    smoothVarRegister += variable[ip_other] * weight_tmp
+    
+        elif filter_type == 1:
+            for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+                for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                    for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                        if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                                          tile_x, tile_y, tile_z,
+                                          delta_x, delta_y, delta_z,
+                                          tile_widths, filter_window * filter_length):
+                            start_index = start_index_for_tile[tile_x,
+                                                               tile_y, tile_z]
+                            n_particles = particles_per_tile[tile_x,
+                                                             tile_y, tile_z]
+        
+                            for ip_other in range(start_index, start_index + n_particles):
+                                dist = distance(pos[oldIp], pos[ip_other])
+                                if dist < filter_window * filter_length:
+                                    weight_tmp = gaussian_kernel(dist, filter_length) * weights[ip_other]
+                                    weight += weight_tmp
+                                    smoothVarRegister += variable[ip_other] * weight_tmp
+        
+        if weight > 0.:
+            smooth_var[oldIp] = smoothVarRegister/weight
+
+            
 
 @cuda.jit()
 def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
@@ -600,7 +783,7 @@ class SmoothingFilter:
         return variable_str, unit_quantity
 
     def filter_variable(self, variable, filter_length, weight=None, filter_type="mean", iterative=False,
-                       shared_mem=False, Nmax=64):
+                       shared_mem=False, Nmax=64, optimized=False):
         """
         shared_mem has been tested only with filter_type="mean"
         Nmax is the max number of particles per block. Each tile is split
@@ -629,7 +812,10 @@ class SmoothingFilter:
         # Do the filtering
         if not shared_mem:
             if not iterative:
-                smooth_variable = self._apply_filter_gpu(variable_str, weight, filter_type)
+                if optimized:
+                    smooth_variable = self._apply_filter_gpu_optimized(variable_str, weight, filter_type)
+                else: 
+                    smooth_variable = self._apply_filter_gpu(variable_str, weight, filter_type)
             else:
                 smooth_variable = self._apply_filter_gpu_iterative(variable_str, weight, filter_type)
         else:
@@ -707,6 +893,75 @@ class SmoothingFilter:
                                                      start_index_for_tile, particles_per_tile, 
                                                      tile_widths, variable, weights, center, 
                                                      widths, npixs, filter_lengths, smooth_var, filter_type)
+
+        return cp.asnumpy(smooth_var[self.tile.unsort_index])
+
+
+    def _apply_filter_gpu_optimized(self, variable_str, weight, filter_type):
+        """
+        The idea behind this 'optimized' version is to check if the particle
+        is in the domain _beforehand_, and then run the filtering kernel 
+        only on those that are in the domain. There is a certain speedup 
+        in doing so (for small-size problems running time can be 1/3)
+        I have also improved the tile searching within the kernel: now only
+        the tiles that *overlap* with the filtering radius of each particle
+        are selected, without wasting time looping over those that do not
+        For now I am adding it as an option to the filter_variable function
+        (optimized=True) to allow a comparison with the baseline 
+        (optimized=False)
+        """
+        pos = self.gpu_variables['pos']
+        hsml = self.gpu_variables['hsml']
+        # - self.tile.off_sets[None,:]
+        tile_index = self.tile.tile_index
+        start_index_for_tile = self.tile.start_index_for_tile
+        particles_per_tile = self.tile.particles_per_tile
+        tile_widths = self.tile.tile_widths
+        variable = self.gpu_variables[variable_str]
+        npixs = self.tile.npixs
+        center = self.gpu_variables['center']
+        widths = self.gpu_variables['widths']
+        offsets = self.tile.off_sets
+        filter_lengths = self.gpu_variables['filter_lengths']
+        if filter_type == "mean":
+            filter_type = 0
+        elif filter_type == "gaussian":
+            filter_type = 1
+        
+
+        if cp.max(filter_lengths) > self.extra_layer_thickness_value:
+            err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
+            raise RuntimeError(err_msg)
+
+        if weight is not None:
+            weights = self.gpu_variables[weight]
+        else:
+            weights = cp.ones_like(variable)
+
+        isParticleInDomain = cp.zeros(pos.shape[0])
+        
+        check_particle[self.blocks_1d, self.threadsperblock](pos, hsml, center, widths, isParticleInDomain)
+        self.isParticleInDomain = isParticleInDomain
+        cumulative_occupancy = cp.cumsum(isParticleInDomain)
+        numParticlesInDomain = int(cumulative_occupancy[-1])
+        oldIndex = cp.zeros(numParticlesInDomain,dtype=int)
+        
+        compactify_particles[self.blocks_1d, self.threadsperblock](pos, tile_index,
+                                        cumulative_occupancy.flatten(), isParticleInDomain, 
+                                        oldIndex)
+
+        self.oldIndex = oldIndex
+        
+        blocks_1d = (numParticlesInDomain + (self.threadsperblock - 1)) // self.threadsperblock
+        
+        smooth_var = cp.zeros_like(variable)
+
+        apply_filter_optimized[blocks_1d, self.threadsperblock](oldIndex, 
+                                                          pos, hsml, tile_index, 
+                                                          start_index_for_tile,
+                                                           particles_per_tile, tile_widths,
+                                                           variable, weights, offsets, npixs, center, widths, 
+                                                          filter_lengths, smooth_var, filter_type)
 
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
