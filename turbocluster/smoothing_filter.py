@@ -5,6 +5,7 @@ import math
 # import numba
 import paicos as pa
 from .cartesian_tiling import CartesianTiling
+from .spherical_tiling import SphericalTiling
 
 # these two raise an error
 # from smoothing_filter_shared import compute_max_hsml, check_block, compactify_in_domain, apply_filter_shared
@@ -456,7 +457,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
 
 @cuda.jit()
 def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
-                 variable, weights, npixs, center, widths, filter_lengths, smooth_var, filter_type):
+                 variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, filter_type):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -499,6 +500,11 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
         ip_tile_y = tile_index[ip, 1]
         ip_tile_z = tile_index[ip, 2]
 
+        # relative coordinates w.r.t. center of tile
+        delta_x = xp - offsets[0] - (ip_tile_x + 0.5) * tile_widths[0] 
+        delta_y = yp - offsets[1] - (ip_tile_y + 0.5) * tile_widths[1] 
+        delta_z = zp - offsets[2] - (ip_tile_z + 0.5) * tile_widths[2] 
+
         # tile_pos = tile_positions[tile_x, tile_y, tile_z]
         # tile_widths
         weight = 0.0
@@ -521,32 +527,215 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
         # ip_tile_z_min = ((zp - zmin) - filter_window*filter_length)//tile_widths[2]
         # ip_tile_z_max = ((zp - zmin) + filter_window*filter_length)//tile_widths[2]
 
-        ip_tile_x_min = ip_tile_x - \
-            int((filter_window * filter_length) / tile_widths[0] + 1)
-        ip_tile_x_max = ip_tile_x + \
-            int((filter_window * filter_length) / tile_widths[0] + 1)
+        # ip_tile_x_min = ip_tile_x - \
+        #     int((filter_window * filter_length) / tile_widths[0] + 1)
+        # ip_tile_x_max = ip_tile_x + \
+        #     int((filter_window * filter_length) / tile_widths[0] + 1)
 
-        ip_tile_y_min = ip_tile_y - \
-            int((filter_window * filter_length) / tile_widths[1] + 1)
-        ip_tile_y_max = ip_tile_y + \
-            int((filter_window * filter_length) / tile_widths[1] + 1)
+        # ip_tile_y_min = ip_tile_y - \
+        #     int((filter_window * filter_length) / tile_widths[1] + 1)
+        # ip_tile_y_max = ip_tile_y + \
+        #     int((filter_window * filter_length) / tile_widths[1] + 1)
 
-        ip_tile_z_min = ip_tile_z - \
-            int((filter_window * filter_length) / tile_widths[2] + 1)
-        ip_tile_z_max = ip_tile_z + \
-            int((filter_window * filter_length) / tile_widths[2] + 1)
+        # ip_tile_z_min = ip_tile_z - \
+        #     int((filter_window * filter_length) / tile_widths[2] + 1)
+        # ip_tile_z_max = ip_tile_z + \
+        #     int((filter_window * filter_length) / tile_widths[2] + 1)
+
+        ip_tile_x_min = ip_tile_x - (- delta_x + \
+                        filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
+        ip_tile_x_max = ip_tile_x + (delta_x +   \
+                        filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
+    
+        ip_tile_y_min = ip_tile_y - (- delta_y + \
+                        filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
+        ip_tile_y_max = ip_tile_y + (delta_y +   \
+                        filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
+    
+        ip_tile_z_min = ip_tile_z - (- delta_z + \
+                        filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
+        ip_tile_z_max = ip_tile_z + (delta_z +   \
+                        filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2]
 
         if filter_type == 0:
             for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
                 for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
                     for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                        # tile_x = ip_tile_x
-                        # tile_y = ip_tile_y
-                        # tile_z = ip_tile_z
-                        start_index = start_index_for_tile[tile_x,
-                                                           tile_y, tile_z]
-                        n_particles = particles_per_tile[tile_x,
-                                                         tile_y, tile_z]
+                        if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                                          tile_x, tile_y, tile_z,
+                                          delta_x, delta_y, delta_z,
+                                          tile_widths, filter_length):
+                            start_index = start_index_for_tile[tile_x,
+                                                               tile_y, tile_z]
+                            n_particles = particles_per_tile[tile_x,
+                                                             tile_y, tile_z]
+    
+                            for ip_other in range(start_index, start_index + n_particles):
+                                dist = distance(pos[ip], pos[ip_other])
+                                if dist < filter_length:
+                                    weight_tmp = 1.0 * weights[ip_other]
+                                    weight += weight_tmp
+                                    smooth_var[ip] += variable[ip_other] * weight_tmp
+
+        elif filter_type == 1:
+            for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+                for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                    for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                        if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                                          tile_x, tile_y, tile_z,
+                                          delta_x, delta_y, delta_z,
+                                          tile_widths, filter_window * filter_length):
+                            start_index = start_index_for_tile[tile_x,
+                                                               tile_y, tile_z]
+                            n_particles = particles_per_tile[tile_x,
+                                                             tile_y, tile_z]
+    
+                            for ip_other in range(start_index, start_index + n_particles):
+                                dist = distance(pos[ip], pos[ip_other])
+                                if dist < filter_window * filter_length:
+                                    weight_tmp = gaussian_kernel(dist, filter_length) * weights[ip_other]
+                                    weight += weight_tmp
+                                    smooth_var[ip] += variable[ip_other] * weight_tmp
+        if weight > 0.:
+            smooth_var[ip] /= weight
+
+@cuda.jit()
+def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
+                           particles_per_tile, spacings,
+                           variable, weights, nSects, center, rMin, rMax, 
+                           _rMin, filter_lengths, smooth_var, filter_type):
+    """
+    filter_lengths is an array of size pos.shape([0])
+    type can be "mean" or "gaussian"
+    rMin, rMax are the domain computational boundaries
+    chosen by the user
+    _rMin, _rMax are the lower and upper limits of 
+    the radial grid (computed by SphericalTiling)
+    _rMin < rMin
+    _rMax > rMax
+    """
+    # threadindex
+    ip = cuda.grid(1)
+
+    # particle position
+    xp = pos[ip, 0]
+    yp = pos[ip, 1]
+    zp = pos[ip, 2]
+
+    rad2 = (xp - center[0])**2 + \
+           (yp - center[1])**2 + \
+           (zp - center[2])**2
+
+    rp = math.sqrt(rad2)
+    phi = math.atan2(yp - center[1], xp - center[0]) % (2.0*math.pi)
+    theta = math.acos( (zp - center[2]) / rp)
+    #cylindrical radius
+    cylRadius = rp * math.sin(theta)
+    
+    rad2Min = (rMin - 2.0 * hsml[ip])**2
+    rad2Max = (rMax + 2.0 * hsml[ip])**2
+
+    # Check if this cell/particle is inside domain
+    inside_domain = False
+    if (rad2 > rad2Min) and (rad2 < rad2Max):
+        inside_domain = True
+
+    # in theory we can have different filter lengths per particle
+    # for the iterative scheme in Vazza this number is gradually increased
+    # maybe this function needs to be reworked in that case...
+    filter_length = filter_lengths[ip]
+
+    radSpacing, phiSpacing, theSpacing = spacings
+    nSectRad, nSectPhi, nSectThe = nSects
+
+    if inside_domain:
+
+        ip_tile_rad = tile_index[ip, 0]
+        ip_tile_phi = tile_index[ip, 1]
+        ip_tile_the = tile_index[ip, 2]
+
+        weight = 0.0
+        weight_tmp = 0.0
+
+        filter_window = 1
+        # for gaussian filter we actually want to look for particles up to 4 times
+        # filter_length far away from the source particle
+        if filter_type == 1:
+            filter_window = 4
+
+        # when the particle is far away from the z axis so that the filter
+        # search radius does not overlap with it
+        if (filter_window * filter_length < cylRadius):
+            delta_phi = math.asin((filter_window * filter_length) / cylRadius)
+            # tricky situations: 
+            # 1: when phi - delta_phi < 0 or
+            # 2: phi + delta_phi > 2 \pi
+            # case 1: ip_tile_ip_min is negative (but with the 
+            # appropriate value) and the range( , ) works as intended
+            ip_tile_phi_min = int((phi - delta_phi) // phiSpacing)
+            # case 2: we shift both phi_min and phi_max to the 
+            # interval [-ip_tile_phi_min - numSectPhi (<0), 
+            # ip_tile_phi_max - numSectPhi]
+            # This leads back to case 1.
+            ip_tile_phi_max = int((phi + delta_phi) // phiSpacing)
+            if (phi + delta_phi > 2.0*math.pi):
+                ip_tile_phi_min -= nSectPhi
+                ip_tile_phi_max -= nSectPhi
+
+            delta_theta = math.asin((filter_window * filter_length) / rp)
+            # when filter_window * filter_length < cylRadius
+            # theta +/- delta_theta is always well-behaved
+            ip_tile_the_min = int((theta - delta_theta) // theSpacing)
+            ip_tile_the_max = int((theta + delta_theta) // theSpacing)            
+        # when the particle search radius overlaps with z axis
+        # (cylRadius < filter_window * filter_length)
+        else:
+            # need to search all the azimuthal sectors
+            ip_tile_phi_min = 0
+            ip_tile_phi_max = nSectPhi - 1
+            # regarding latitudinal range, three cases:
+            # case 1. particle+search radius is entirely in z>0 midplane
+            # case 2. particle+search radius is entirely in z<0 midplane
+            # case 3. particle+search radius overlaps with origin 
+            # for case 3. the latitudinal tiles go from 0 to nSectThe -1
+            ip_tile_the_min = 0
+            ip_tile_the_max = nSectThe - 1
+            if (zp > filter_window * filter_length):
+                # case 1. search latitudinal tiles from 0 to ip_tile_the_max
+                delta_theta = math.asin((filter_window * filter_length) / rp)
+                ip_tile_the_max = int((theta + delta_theta) // theSpacing)
+            elif (- zp > filter_window * filter_length):
+                delta_theta = math.asin((filter_window * filter_length) / rp)
+                ip_tile_the_min = int((theta - delta_theta) // theSpacing)
+                # case 2. search latitudinal tiles from ip_tile_the_min
+                # to nSectThe - 1
+            
+        # the radial tile range selection actually is in 
+        # common for both cases 
+        # when filter_window * filter_length < cylRadius
+        # and when filter_window * filter_length >= cylRadius
+        # we have two cases: 
+        # case 1. the ball overlaps with the origin
+        # case 2. the ball does not overlap with the origin
+        # both can be covered by the following
+        delta_rad = filter_window * filter_length
+        ip_tile_rad_min = 0
+        if (rp - delta_rad > _rMin):
+            ip_tile_rad_min = (math.log10(rp - delta_rad) - \
+                               math.log10(_rMin) ) // radSpacing
+        ip_tile_rad_max = (math.log10(rp + delta_rad) - \
+                           math.log10(_rMin) ) // radSpacing
+            
+
+        if filter_type == 0:
+            for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
+                for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
+                    for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
+
+                        start_index = start_index_for_tile[tile_rad,
+                                                           tile_phi, tile_the]
+                        n_particles = particles_per_tile[tile_rad,
+                                                           tile_phi, tile_the]
 
                         for ip_other in range(start_index, start_index + n_particles):
                             dist = distance(pos[ip], pos[ip_other])
@@ -556,13 +745,14 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                                 smooth_var[ip] += variable[ip_other] * weight_tmp
 
         elif filter_type == 1:
-            for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-                for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-                    for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                        start_index = start_index_for_tile[tile_x,
-                                                           tile_y, tile_z]
-                        n_particles = particles_per_tile[tile_x,
-                                                         tile_y, tile_z]
+            for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
+                for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
+                    for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
+
+                        start_index = start_index_for_tile[tile_rad,
+                                                           tile_phi, tile_the]
+                        n_particles = particles_per_tile[tile_rad,
+                                                           tile_phi, tile_the]
 
                         for ip_other in range(start_index, start_index + n_particles):
                             dist = distance(pos[ip], pos[ip_other])
@@ -572,7 +762,6 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                                 smooth_var[ip] += variable[ip_other] * weight_tmp
         if weight > 0.:
             smooth_var[ip] /= weight
-
 
 @cuda.jit(device=True, inline=True)
 def distance(pos, pos_other):
@@ -595,14 +784,30 @@ class SmoothingFilter:
     """
 
     def __init__(self, snap, center, widths, orientation=None, max_search_radius=None,
-                 npix=128, threadsperblock=256):
+                 npix=128, threadsperblock=256, tilingType='cartesian', numPhi=-1, 
+                 numTheta=-1, rMin=-1.0, rMax=-1.0):
+        """
+        If spherical=True, npix is the number of intervals in the radial direction
+        in the phi and theta direction we have npix, and npix/2 intervals
+        by default
+        """
 
         if orientation is not None:
             raise RuntimeError('not implemented')
-        # if max_search_radius is None:
-        #     raise RuntimeError('need input')
+        if (tilingType == 'spherical'):
+            if (rMin < 0.0) or (rMax < 0.0) or (rMax < rMin):
+                raise RuntimeError('With spherical \
+                you need to provide a non-negative \
+                rMin and rMax > rMin')
 
         self.snap = snap
+
+        if (tilingType == 'spherical'):
+            self.spherical = True
+            self.cartesian = False
+        elif (tilingType == 'cartesian'):
+            self.cartesian = True
+            self.spherical = False
 
         code_length = self.snap.length
 
@@ -622,16 +827,31 @@ class SmoothingFilter:
         else:
             self.widths = np.array(widths)
 
-        if max_search_radius is None:
-            max_search_radius = 0.2 * np.max(self.widths)
+        if (tilingType == 'spherical'):
+            numRad = npix
+            
+            if (numPhi < 0):
+                numPhi = npix
+            if (numTheta < 0):
+                numTheta = int(npix/2)
 
-        if hasattr(max_search_radius, 'unit'):
-            self.max_search_radius = max_search_radius.copy
-            assert max_search_radius.unit == code_length.unit, 'this restriction applies'
-        elif pa.settings.use_units:
-            self.max_search_radius = np.array(max_search_radius) * code_length
-        else:
-            self.max_search_radius = np.array(max_search_radius)
+            if hasattr(rMin, 'unit'):
+                self.rMin = rMin.copy
+                assert rMin.unit == code_length.unit, 'this restriction applies'
+            elif pa.settings.use_units:
+                self.rMin = rMin * code_length
+            else:
+                self.rMin = rMin
+
+            if hasattr(rMax, 'unit'):
+                self.rMax = rMax.copy
+                assert rMax.unit == code_length.unit, 'this restriction applies'
+            elif pa.settings.use_units:
+                self.rMax = rMax * code_length
+            else:
+                self.rMax = rMax
+
+        
 
         if orientation is None:
             self.orientation = None
@@ -646,7 +866,36 @@ class SmoothingFilter:
         if pa.settings.use_units:
             self.hsml = self.hsml.to(self.pos.unit)
 
-        self._do_region_selection()
+        # if search_radius is None:
+        #     search_radius = 10.0 * self.hsml
+
+        # if hasattr(search_radius, 'unit'):
+        #     self.search_radius = search_radius.copy
+        #     assert search_radius.unit == code_length.unit, 'this restriction applies'
+        # elif pa.settings.use_units:
+        #     self.search_radius = np.array(search_radius) * code_length
+        # else:
+        #     self.search_radius = np.array(search_radius)
+
+        if max_search_radius is None:
+            max_search_radius = 0.2 * np.max(self.widths)
+
+        if hasattr(max_search_radius, 'unit'):
+            self.max_search_radius = max_search_radius.copy
+            assert max_search_radius.unit == code_length.unit, 'this restriction applies'
+        elif pa.settings.use_units:
+            self.max_search_radius = np.array(max_search_radius) * code_length
+        else:
+            self.max_search_radius = np.array(max_search_radius)
+
+        # tilingType = 'cartesian'
+        # if spherical:
+        #     tilingType = 'spherical'
+
+        if (tilingType == 'cartesian'):
+            self._do_region_selection()
+        elif (tilingType == 'spherical'):
+            self._do_region_selection_spherical()
 
         self.extra_layer_thickness = np.max(2 * self.hsml) + self.max_search_radius
         if pa.settings.use_units:
@@ -655,9 +904,15 @@ class SmoothingFilter:
             self.extra_layer_thickness_value = self.extra_layer_thickness
 
         # Create tiling
-        self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'],
-                                    self.gpu_variables['widths'], self.extra_layer_thickness_value, npix=npix,
-                                    threadsperblock=threadsperblock)
+        if (tilingType == 'cartesian'):
+            self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'],
+                                        self.gpu_variables['widths'], self.extra_layer_thickness_value, npix=npix,
+                                        threadsperblock=threadsperblock)
+        elif (tilingType == 'spherical'):
+            self.tile = SphericalTiling(self.gpu_variables['pos'], self.gpu_variables['center'],
+                                        rMin, rMax, self.extra_layer_thickness_value,
+                                        nRadial=128, nPhi=128, nTheta=64,
+                                        threadsperblock=256)
 
         # Do the sorting
         self.gpu_variables['pos'] = self.gpu_variables['pos'][self.tile.sort_index, :]
@@ -676,17 +931,59 @@ class SmoothingFilter:
 
         # Send subset of snapshot to GPU
         # get the index of the region of projection
-        thickness = 2 * self.hsml + self.max_search_radius
+        # thickness = 2 * self.hsml 
         if self.orientation is None:
             get_index = pa.util.get_index_of_cubic_region_plus_thin_layer
+            # indicesFirstPass = get_index(self.snap["0_Coordinates"],
+            #                        center, widths, thickness,
+            #                        snap.box)
+            # self.max_search_radius = np.max(self.search_radius[indicesFirstPass])
+            thickness = 2 * self.hsml + self.max_search_radius
             self.index = get_index(self.snap["0_Coordinates"],
                                    center, widths, thickness,
                                    snap.box)
         else:
             get_index = pa.util.get_index_of_rotated_cubic_region_plus_thin_layer
+            # indicesFirstPass = get_index(self.snap["0_Coordinates"],
+            #                        center, widths, thickness, snap.box,
+            #                        self.orientation)
+            # self.max_search_radius = np.max(self.search_radius[indicesFirstPass])
+            thickness = 2 * self.hsml + self.max_search_radius
             self.index = get_index(self.snap["0_Coordinates"],
                                    center, widths, thickness, snap.box,
                                    self.orientation)
+
+        self.pos = self.pos[self.index]
+        self.hsml = self.hsml[self.index]
+
+        self._send_data_to_gpu()
+
+    def _do_region_selection_spherical(self):
+        """ 
+        rMin, rMax are the domain computational boundaries
+        chosen by the user
+        _rMin, _rMax are the lower and upper limits of 
+        the radial grid (computed by SphericalTiling)
+        _rMin < rMin
+        _rMax > rMax
+        """
+
+        center = self.center
+        # widths = self.widths
+        snap = self.snap
+        rMin = self.rMin
+        rMax = self.rMax
+
+        # Send subset of snapshot to GPU
+        # get the index of the region of projection
+        # thickness = 2 * self.hsml         
+        get_index = pa.util.get_index_of_radial_range_plus_thin_layer
+        # indicesFirstPass = get_index(self.snap["0_Coordinates"],
+        #                        center, rMin, rMax, thickness)
+        # self.max_search_radius = np.max(self.search_radius[indicesFirstPass])
+        thickness = 2 * self.hsml + self.max_search_radius
+        self.index = get_index(self.snap["0_Coordinates"],
+                               center, rMin, rMax, thickness)
 
         self.pos = self.pos[self.index]
         self.hsml = self.hsml[self.index]
@@ -707,24 +1004,43 @@ class SmoothingFilter:
                 self.orientation.rotation_matrix)
 
         if pa.settings.use_units:
-            self.gpu_variables['widths'] = cp.array(self.widths.value)
+            if self.cartesian: 
+                self.gpu_variables['widths'] = cp.array(self.widths.value)
+            elif self.spherical:
+                self.gpu_variables['rMin'] = cp.array(self.rMin.value)
+                self.gpu_variables['rMax'] = cp.array(self.rMax.value)
             self.gpu_variables['center'] = cp.array(self.center.value)
         else:
-            self.gpu_variables['widths'] = cp.array(self.widths)
+            if self.cartesian: 
+                self.gpu_variables['widths'] = cp.array(self.widths)
+            elif self.spherical:
+                self.gpu_variables['rMin'] = cp.array(self.rMin)
+                self.gpu_variables['rMax'] = cp.array(self.rMax)
             self.gpu_variables['center'] = cp.array(self.center)
 
     def _apply_filter_gpu(self, variable_str, weight, filter_type):
         pos = self.gpu_variables['pos']
         hsml = self.gpu_variables['hsml']
-        # - self.tile.off_sets[None,:]
         tile_index = self.tile.tile_index
         start_index_for_tile = self.tile.start_index_for_tile
         particles_per_tile = self.tile.particles_per_tile
-        tile_widths = self.tile.tile_widths
         variable = self.gpu_variables[variable_str]
-        npixs = self.tile.npixs
         center = self.gpu_variables['center']
-        widths = self.gpu_variables['widths']
+        offsets = self.tile.off_sets
+        
+        if self.cartesian:
+            tile_widths = self.tile.tile_widths
+            widths = self.gpu_variables['widths']
+            npixs = self.tile.npixs
+        elif self.spherical:
+            _rMin = self.tile._rMin
+            _rMax = self.tile._rMax
+            rMin = self.rMin.value
+            rMax = self.rMax.value
+            nSects = self.tile.nSects
+            spacings = self.tile.spacings
+        
+        
         filter_lengths = self.gpu_variables['filter_lengths']
         if filter_type == "mean":
             filter_type = 0
@@ -741,9 +1057,16 @@ class SmoothingFilter:
         else:
             weights = cp.ones_like(variable)
 
-        apply_filter[self.blocks_1d, self.threadsperblock](pos, hsml, tile_index, start_index_for_tile,
+        if self.cartesian:
+            apply_filter[self.blocks_1d, self.threadsperblock](pos, hsml, tile_index, start_index_for_tile,
                                                            particles_per_tile, tile_widths,
-                                                           variable, weights, npixs, center, widths, filter_lengths, smooth_var, filter_type)
+                                                           variable, weights, offsets, npixs, center, widths, 
+                                                           filter_lengths, smooth_var, filter_type)
+        elif self.spherical:
+            apply_filter_spherical[self.blocks_1d, self.threadsperblock](pos, hsml, tile_index, start_index_for_tile,
+                                                           particles_per_tile, spacings,
+                                                           variable, weights, nSects, center, rMin, rMax, _rMin,
+                                                           filter_lengths, smooth_var, filter_type)
 
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
@@ -805,8 +1128,18 @@ class SmoothingFilter:
         # send filter_length to gpu
         if isinstance(filter_length, np.ndarray):
             assert filter_length.shape[0] == self.index.shape[0]
+            if (np.max(filter_length[self.index]) > self.max_search_radius):
+                raise RuntimeError('The chosen filter length is larger than the \
+                maximum search radius. This would cause searching for cells that \
+                have not been moved to the GPU. To solve this decrease \
+                the filter length or increase the search radius accordingly')
             self._send_variable_to_gpu(filter_length, gpu_key='filter_lengths')
         else:
+            if (filter_length > self.max_search_radius):
+                raise RuntimeError('The chosen filter length is larger than the \
+                maximum search radius. This would cause searching for cells that \
+                have not been moved to the GPU. To solve this decrease \
+                the filter length or increase the search radius accordingly')
             self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length
 
         # Do the filtering
@@ -910,6 +1243,11 @@ class SmoothingFilter:
         (optimized=True) to allow a comparison with the baseline 
         (optimized=False)
         """
+
+        if self.spherical:
+            raise RuntimeError('optimized filter has only \
+                                been tested with cartesian grids')
+            
         pos = self.gpu_variables['pos']
         hsml = self.gpu_variables['hsml']
         # - self.tile.off_sets[None,:]
