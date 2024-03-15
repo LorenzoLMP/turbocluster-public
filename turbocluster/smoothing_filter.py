@@ -46,14 +46,14 @@ def check_block(pos, hsml, compactGrid, center, widths, isBlockInDomain):
             # compactGrid[ip, 1] contains the first particle Id 
             particleIp = compactGrid[ip, 1] + i
             xp, yp, zp = pos[particleIp]
-            xmin = center[0] - widths[0] / 2 - 2.0 * hsml[particleIp]
-            xmax = center[0] + widths[0] / 2 + 2.0 * hsml[particleIp]
+            xmin = center[0] - widths[0] / 2 - hsml[particleIp]
+            xmax = center[0] + widths[0] / 2 + hsml[particleIp]
         
-            ymin = center[1] - widths[1] / 2 - 2.0 * hsml[particleIp]
-            ymax = center[1] + widths[1] / 2 + 2.0 * hsml[particleIp]
+            ymin = center[1] - widths[1] / 2 - hsml[particleIp]
+            ymax = center[1] + widths[1] / 2 + hsml[particleIp]
         
-            zmin = center[2] - widths[2] / 2 - 2.0 * hsml[particleIp]
-            zmax = center[2] + widths[2] / 2 + 2.0 * hsml[particleIp]
+            zmin = center[2] - widths[2] / 2 - hsml[particleIp]
+            zmax = center[2] + widths[2] / 2 + hsml[particleIp]
 
             if (xp > xmin) and (xp < xmax):
                 if (yp > ymin) and (yp < ymax):
@@ -132,26 +132,26 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
     cuda.syncthreads()
     maxFilterLength = maxFilterLength.item()
 
-    filter_window = 1.0
-    # for gaussian filter we actually want to look for particles up to 4 times
-    # filter_length far away from the source particle
+    filter_window = 1
+    # for gaussian filter the sigma is  1/4 of the
+    # filter_length of the source particle
     if filter_type == 1:
-        filter_window = 4.0
+        filter_window = 4
 
     ip_tile_x_min = ipTile_x - \
-        int((filter_window * maxFilterLength) / tile_widths_x + 1)
+        int((maxFilterLength) / tile_widths_x + 1)
     ip_tile_x_max = ipTile_x + \
-        int((filter_window * maxFilterLength) / tile_widths_x + 1)
+        int((maxFilterLength) / tile_widths_x + 1)
 
     ip_tile_y_min = ipTile_y - \
-        int((filter_window * maxFilterLength) / tile_widths_y + 1)
+        int((maxFilterLength) / tile_widths_y + 1)
     ip_tile_y_max = ipTile_y + \
-        int((filter_window * maxFilterLength) / tile_widths_y + 1)
+        int((maxFilterLength) / tile_widths_y + 1)
 
     ip_tile_z_min = ipTile_z - \
-        int((filter_window * maxFilterLength) / tile_widths_z + 1)
+        int((maxFilterLength) / tile_widths_z + 1)
     ip_tile_z_max = ipTile_z + \
-        int((filter_window * maxFilterLength) / tile_widths_z + 1)
+        int((maxFilterLength) / tile_widths_z + 1)
 
     numTotalNeighbours = int((ip_tile_x_max - ip_tile_x_min) * \
                          (ip_tile_y_max - ip_tile_y_min) * \
@@ -254,14 +254,14 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
         # check first
         idOwnParticle = startIdxBlock + threadId
 
-        xmin = center_x - widths_x / 2 - 2.0 * ownParticle[threadId*7 + 6]
-        xmax = center_x + widths_x / 2 + 2.0 * ownParticle[threadId*7 + 6]
+        xmin = center_x - widths_x / 2 - ownParticle[threadId*7 + 6]
+        xmax = center_x + widths_x / 2 + ownParticle[threadId*7 + 6]
     
-        ymin = center_y - widths_y / 2 - 2.0 * ownParticle[threadId*7 + 6]
-        ymax = center_y + widths_y / 2 + 2.0 * ownParticle[threadId*7 + 6]
+        ymin = center_y - widths_y / 2 - ownParticle[threadId*7 + 6]
+        ymax = center_y + widths_y / 2 + ownParticle[threadId*7 + 6]
     
-        zmin = center_z - widths_z / 2 - 2.0 * ownParticle[threadId*7 + 6]
-        zmax = center_z + widths_z / 2 + 2.0 * ownParticle[threadId*7 + 6]
+        zmin = center_z - widths_z / 2 - ownParticle[threadId*7 + 6]
+        zmax = center_z + widths_z / 2 + ownParticle[threadId*7 + 6]
 
         xp, yp, zp = ownParticle[threadId*7:threadId*7 + 3]
 
@@ -318,14 +318,14 @@ def check_particle(pos, hsml, center, widths, isParticleInDomain):
     if (ip < numParticles):
 
         xp, yp, zp = pos[ip]
-        xmin = center[0] - widths[0] / 2 - 2.0 * hsml[ip]
-        xmax = center[0] + widths[0] / 2 + 2.0 * hsml[ip]
+        xmin = center[0] - widths[0] / 2 - hsml[ip]
+        xmax = center[0] + widths[0] / 2 + hsml[ip]
     
-        ymin = center[1] - widths[1] / 2 - 2.0 * hsml[ip]
-        ymax = center[1] + widths[1] / 2 + 2.0 * hsml[ip]
+        ymin = center[1] - widths[1] / 2 - hsml[ip]
+        ymax = center[1] + widths[1] / 2 + hsml[ip]
     
-        zmin = center[2] - widths[2] / 2 - 2.0 * hsml[ip]
-        zmax = center[2] + widths[2] / 2 + 2.0 * hsml[ip]
+        zmin = center[2] - widths[2] / 2 - hsml[ip]
+        zmax = center[2] + widths[2] / 2 + hsml[ip]
 
         if (xp > xmin) and (xp < xmax):
             if (yp > ymin) and (yp < ymax):
@@ -389,25 +389,25 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
         smoothVarRegister = 0.0
     
         filter_window = 1
-        # for gaussian filter we actually want to look for particles up to 4 times
-        # filter_length far away from the source particle
+        # for gaussian filter the sigma is  1/4 of the
+        # filter_length of the source particle
         if filter_type == 1:
             filter_window = 4
 
         ip_tile_x_min = ip_tile_x - (- delta_x + \
-                        filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
+                        filter_length + tile_widths[0] / 2) // tile_widths[0] 
         ip_tile_x_max = ip_tile_x + (delta_x +   \
-                        filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
+                        filter_length + tile_widths[0] / 2) // tile_widths[0] 
     
         ip_tile_y_min = ip_tile_y - (- delta_y + \
-                        filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
+                        filter_length + tile_widths[1] / 2) // tile_widths[1] 
         ip_tile_y_max = ip_tile_y + (delta_y +   \
-                        filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
+                        filter_length + tile_widths[1] / 2) // tile_widths[1] 
     
         ip_tile_z_min = ip_tile_z - (- delta_z + \
-                        filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
+                        filter_length + tile_widths[2] / 2) // tile_widths[2] 
         ip_tile_z_max = ip_tile_z + (delta_z +   \
-                        filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
+                        filter_length + tile_widths[2] / 2) // tile_widths[2] 
     
         if filter_type == 0:
             for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -437,7 +437,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                         if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                                           tile_x, tile_y, tile_z,
                                           delta_x, delta_y, delta_z,
-                                          tile_widths, filter_window * filter_length):
+                                          tile_widths, filter_length):
                             start_index = start_index_for_tile[tile_x,
                                                                tile_y, tile_z]
                             n_particles = particles_per_tile[tile_x,
@@ -445,8 +445,8 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
         
                             for ip_other in range(start_index, start_index + n_particles):
                                 dist = distance(pos[oldIp], pos[ip_other])
-                                if dist < filter_window * filter_length:
-                                    weight_tmp = gaussian_kernel(dist, filter_length) * weights[ip_other]
+                                if dist < filter_length:
+                                    weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
                                     weight += weight_tmp
                                     smoothVarRegister += variable[ip_other] * weight_tmp
         
@@ -457,7 +457,8 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
 
 @cuda.jit()
 def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
-                 variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, filter_type):
+                 variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, 
+                 filter_type, hitsNeighbours, isParticleInDomain):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -470,14 +471,14 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
     yp = pos[ip, 1]
     zp = pos[ip, 2]
 
-    xmin = center[0] - widths[0] / 2 - 2.0 * hsml[ip]
-    xmax = center[0] + widths[0] / 2 + 2.0 * hsml[ip]
+    xmin = center[0] - widths[0] / 2 - hsml[ip]
+    xmax = center[0] + widths[0] / 2 + hsml[ip]
 
-    ymin = center[1] - widths[1] / 2 - 2.0 * hsml[ip]
-    ymax = center[1] + widths[1] / 2 + 2.0 * hsml[ip]
+    ymin = center[1] - widths[1] / 2 - hsml[ip]
+    ymax = center[1] + widths[1] / 2 + hsml[ip]
 
-    zmin = center[2] - widths[2] / 2 - 2.0 * hsml[ip]
-    zmax = center[2] + widths[2] / 2 + 2.0 * hsml[ip]
+    zmin = center[2] - widths[2] / 2 - hsml[ip]
+    zmax = center[2] + widths[2] / 2 + hsml[ip]
 
     # in theory we can have different filter lengths per particle
     # for the iterative scheme in Vazza this number is gradually increased
@@ -496,6 +497,8 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
 
     if inside_domain:
 
+        isParticleInDomain[ip] += 1
+
         ip_tile_x = tile_index[ip, 0]
         ip_tile_y = tile_index[ip, 1]
         ip_tile_z = tile_index[ip, 2]
@@ -511,51 +514,26 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
         weight_tmp = 0.0
 
         filter_window = 1
-        # for gaussian filter we actually want to look for particles up to 4 times
-        # filter_length far away from the source particle
+        # for gaussian filter the sigma is  1/4 of the
+        # filter_length of the source particle
         if filter_type == 1:
             filter_window = 4
 
-        # this could be made smarter if one finds just the tiles that intersect
-        # the sphere of radius filter_length
-        # ip_tile_x_min = ((xp - xmin) - filter_window*filter_length)//tile_widths[0]
-        # ip_tile_x_max = ((xp - xmin) + filter_window*filter_length)//tile_widths[0]
-
-        # ip_tile_y_min = ((yp - ymin) - filter_window*filter_length)//tile_widths[1]
-        # ip_tile_y_max = ((yp - ymin) + filter_window*filter_length)//tile_widths[1]
-
-        # ip_tile_z_min = ((zp - zmin) - filter_window*filter_length)//tile_widths[2]
-        # ip_tile_z_max = ((zp - zmin) + filter_window*filter_length)//tile_widths[2]
-
-        # ip_tile_x_min = ip_tile_x - \
-        #     int((filter_window * filter_length) / tile_widths[0] + 1)
-        # ip_tile_x_max = ip_tile_x + \
-        #     int((filter_window * filter_length) / tile_widths[0] + 1)
-
-        # ip_tile_y_min = ip_tile_y - \
-        #     int((filter_window * filter_length) / tile_widths[1] + 1)
-        # ip_tile_y_max = ip_tile_y + \
-        #     int((filter_window * filter_length) / tile_widths[1] + 1)
-
-        # ip_tile_z_min = ip_tile_z - \
-        #     int((filter_window * filter_length) / tile_widths[2] + 1)
-        # ip_tile_z_max = ip_tile_z + \
-        #     int((filter_window * filter_length) / tile_widths[2] + 1)
 
         ip_tile_x_min = ip_tile_x - (- delta_x + \
-                        filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
+                        filter_length + tile_widths[0] / 2) // tile_widths[0] 
         ip_tile_x_max = ip_tile_x + (delta_x +   \
-                        filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
+                        filter_length + tile_widths[0] / 2) // tile_widths[0] 
     
         ip_tile_y_min = ip_tile_y - (- delta_y + \
-                        filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
+                        filter_length + tile_widths[1] / 2) // tile_widths[1] 
         ip_tile_y_max = ip_tile_y + (delta_y +   \
-                        filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
+                        filter_length + tile_widths[1] / 2) // tile_widths[1] 
     
         ip_tile_z_min = ip_tile_z - (- delta_z + \
-                        filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
+                        filter_length + tile_widths[2] / 2) // tile_widths[2] 
         ip_tile_z_max = ip_tile_z + (delta_z +   \
-                        filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2]
+                        filter_length + tile_widths[2] / 2) // tile_widths[2]
 
         if filter_type == 0:
             for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -576,6 +554,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                                     weight_tmp = 1.0 * weights[ip_other]
                                     weight += weight_tmp
                                     smooth_var[ip] += variable[ip_other] * weight_tmp
+                                    hitsNeighbours[ip] += 1
 
         elif filter_type == 1:
             for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -584,7 +563,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                         if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                                           tile_x, tile_y, tile_z,
                                           delta_x, delta_y, delta_z,
-                                          tile_widths, filter_window * filter_length):
+                                          tile_widths, filter_length):
                             start_index = start_index_for_tile[tile_x,
                                                                tile_y, tile_z]
                             n_particles = particles_per_tile[tile_x,
@@ -592,10 +571,11 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
     
                             for ip_other in range(start_index, start_index + n_particles):
                                 dist = distance(pos[ip], pos[ip_other])
-                                if dist < filter_window * filter_length:
-                                    weight_tmp = gaussian_kernel(dist, filter_length) * weights[ip_other]
+                                if dist < filter_length:
+                                    weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
                                     weight += weight_tmp
                                     smooth_var[ip] += variable[ip_other] * weight_tmp
+                                    hitsNeighbours[ip] += 1
         if weight > 0.:
             smooth_var[ip] /= weight
 
@@ -603,7 +583,8 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
 def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                            particles_per_tile, spacings,
                            variable, weights, nSects, center, rMin, rMax, 
-                           _rMin, filter_lengths, smooth_var, filter_type):
+                           _rMin, filter_lengths, smooth_var, filter_type, 
+                            hitsNeighbours, isParticleInDomain):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -611,7 +592,7 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
     chosen by the user
     _rMin, _rMax are the lower and upper limits of 
     the radial grid (computed by SphericalTiling)
-    _rMin < rMin
+    _rMin < rMin (not exactly...)
     _rMax > rMax
     """
     # threadindex
@@ -632,8 +613,11 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
     #cylindrical radius
     cylRadius = rp * math.sin(theta)
     
-    rad2Min = (rMin - 2.0 * hsml[ip])**2
-    rad2Max = (rMax + 2.0 * hsml[ip])**2
+    if (rMin > hsml[ip]):
+        rad2Min = (rMin - hsml[ip])**2
+    else:
+        rad2Min = 0.0
+    rad2Max = (rMax + hsml[ip])**2
 
     # Check if this cell/particle is inside domain
     inside_domain = False
@@ -647,8 +631,13 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
 
     radSpacing, phiSpacing, theSpacing = spacings
     nSectRad, nSectPhi, nSectThe = nSects
-
+    nSectRad = int(nSectRad)
+    nSectPhi = int(nSectPhi)
+    nSectThe = int(nSectThe)
+    
     if inside_domain:
+        
+        isParticleInDomain[ip] += 1
 
         ip_tile_rad = tile_index[ip, 0]
         ip_tile_phi = tile_index[ip, 1]
@@ -658,15 +647,15 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
         weight_tmp = 0.0
 
         filter_window = 1
-        # for gaussian filter we actually want to look for particles up to 4 times
-        # filter_length far away from the source particle
+        # for gaussian filter the sigma is  1/4 of the
+        # filter_length of the source particle
         if filter_type == 1:
             filter_window = 4
 
         # when the particle is far away from the z axis so that the filter
         # search radius does not overlap with it
-        if (filter_window * filter_length < cylRadius):
-            delta_phi = math.asin((filter_window * filter_length) / cylRadius)
+        if (filter_length < cylRadius):
+            delta_phi = math.asin((filter_length) / cylRadius)
             # tricky situations: 
             # 1: when phi - delta_phi < 0 or
             # 2: phi + delta_phi > 2 \pi
@@ -682,13 +671,13 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                 ip_tile_phi_min -= nSectPhi
                 ip_tile_phi_max -= nSectPhi
 
-            delta_theta = math.asin((filter_window * filter_length) / rp)
-            # when filter_window * filter_length < cylRadius
+            delta_theta = math.asin((filter_length) / rp)
+            # when filter_length < cylRadius
             # theta +/- delta_theta is always well-behaved
             ip_tile_the_min = int((theta - delta_theta) // theSpacing)
             ip_tile_the_max = int((theta + delta_theta) // theSpacing)            
         # when the particle search radius overlaps with z axis
-        # (cylRadius < filter_window * filter_length)
+        # (cylRadius < filter_length)
         else:
             # need to search all the azimuthal sectors
             ip_tile_phi_min = 0
@@ -700,42 +689,42 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
             # for case 3. the latitudinal tiles go from 0 to nSectThe -1
             ip_tile_the_min = 0
             ip_tile_the_max = nSectThe - 1
-            if (zp > filter_window * filter_length):
+            if (( zp - center[2] ) > filter_length):
                 # case 1. search latitudinal tiles from 0 to ip_tile_the_max
-                delta_theta = math.asin((filter_window * filter_length) / rp)
+                delta_theta = math.asin((filter_length) / rp)
                 ip_tile_the_max = int((theta + delta_theta) // theSpacing)
-            elif (- zp > filter_window * filter_length):
-                delta_theta = math.asin((filter_window * filter_length) / rp)
+            elif (- (zp - center[2]) > filter_length):
+                delta_theta = math.asin((filter_length) / rp)
                 ip_tile_the_min = int((theta - delta_theta) // theSpacing)
                 # case 2. search latitudinal tiles from ip_tile_the_min
                 # to nSectThe - 1
             
         # the radial tile range selection actually is in 
         # common for both cases 
-        # when filter_window * filter_length < cylRadius
-        # and when filter_window * filter_length >= cylRadius
+        # when filter_length < cylRadius
+        # and when filter_length >= cylRadius
         # we have two cases: 
         # case 1. the ball overlaps with the origin
         # case 2. the ball does not overlap with the origin
         # both can be covered by the following
-        delta_rad = filter_window * filter_length
+        delta_rad = filter_length
         ip_tile_rad_min = 0
         if (rp - delta_rad > _rMin):
-            ip_tile_rad_min = (math.log10(rp - delta_rad) - \
-                               math.log10(_rMin) ) // radSpacing
-        ip_tile_rad_max = (math.log10(rp + delta_rad) - \
-                           math.log10(_rMin) ) // radSpacing
+            ip_tile_rad_min = int((math.log10(rp - delta_rad) - \
+                               math.log10(_rMin) ) // radSpacing)
+        ip_tile_rad_max = int((math.log10(rp + delta_rad) - \
+                           math.log10(_rMin) ) // radSpacing)
             
-
+        
         if filter_type == 0:
             for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
                 for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
                     for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
 
-                        start_index = start_index_for_tile[tile_rad,
-                                                           tile_phi, tile_the]
-                        n_particles = particles_per_tile[tile_rad,
-                                                           tile_phi, tile_the]
+                        start_index = int(start_index_for_tile[tile_rad,
+                                                           tile_phi, tile_the])
+                        n_particles = int(particles_per_tile[tile_rad,
+                                                           tile_phi, tile_the])
 
                         for ip_other in range(start_index, start_index + n_particles):
                             dist = distance(pos[ip], pos[ip_other])
@@ -743,23 +732,25 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                                 weight_tmp = 1.0 * weights[ip_other]
                                 weight += weight_tmp
                                 smooth_var[ip] += variable[ip_other] * weight_tmp
+                                hitsNeighbours[ip] += 1
 
         elif filter_type == 1:
             for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
                 for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
                     for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
 
-                        start_index = start_index_for_tile[tile_rad,
-                                                           tile_phi, tile_the]
-                        n_particles = particles_per_tile[tile_rad,
-                                                           tile_phi, tile_the]
+                        start_index = int(start_index_for_tile[tile_rad,
+                                                           tile_phi, tile_the])
+                        n_particles = int(particles_per_tile[tile_rad,
+                                                           tile_phi, tile_the])
 
                         for ip_other in range(start_index, start_index + n_particles):
                             dist = distance(pos[ip], pos[ip_other])
-                            if dist < filter_window * filter_length:
-                                weight_tmp = gaussian_kernel(dist, filter_length) * weights[ip_other]
+                            if dist < filter_length:
+                                weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
                                 weight += weight_tmp
                                 smooth_var[ip] += variable[ip_other] * weight_tmp
+                                hitsNeighbours[ip] += 1
         if weight > 0.:
             smooth_var[ip] /= weight
 
@@ -783,7 +774,7 @@ class SmoothingFilter:
     """
     """
 
-    def __init__(self, snap, center, widths, orientation=None, max_search_radius=None,
+    def __init__(self, snap, center, widths, orientation=None, search_radius=None,
                  npix=128, threadsperblock=256, tilingType='cartesian', numPhi=-1, 
                  numTheta=-1, rMin=-1.0, rMax=-1.0):
         """
@@ -866,27 +857,27 @@ class SmoothingFilter:
         if pa.settings.use_units:
             self.hsml = self.hsml.to(self.pos.unit)
 
-        # if search_radius is None:
-        #     search_radius = 10.0 * self.hsml
+        if search_radius is None:
+            search_radius = 10.0 * self.hsml
 
-        # if hasattr(search_radius, 'unit'):
-        #     self.search_radius = search_radius.copy
-        #     assert search_radius.unit == code_length.unit, 'this restriction applies'
-        # elif pa.settings.use_units:
-        #     self.search_radius = np.array(search_radius) * code_length
-        # else:
-        #     self.search_radius = np.array(search_radius)
-
-        if max_search_radius is None:
-            max_search_radius = 0.2 * np.max(self.widths)
-
-        if hasattr(max_search_radius, 'unit'):
-            self.max_search_radius = max_search_radius.copy
-            assert max_search_radius.unit == code_length.unit, 'this restriction applies'
+        if hasattr(search_radius, 'unit'):
+            self.search_radius = search_radius.copy
+            assert search_radius.unit == code_length.unit, 'this restriction applies'
         elif pa.settings.use_units:
-            self.max_search_radius = np.array(max_search_radius) * code_length
+            self.search_radius = np.array(search_radius) * code_length
         else:
-            self.max_search_radius = np.array(max_search_radius)
+            self.search_radius = np.array(search_radius)
+
+        # if max_search_radius is None:
+        #     max_search_radius = 0.2 * np.max(self.widths)
+
+        # if hasattr(max_search_radius, 'unit'):
+        #     self.max_search_radius = max_search_radius.copy
+        #     assert max_search_radius.unit == code_length.unit, 'this restriction applies'
+        # elif pa.settings.use_units:
+        #     self.max_search_radius = np.array(max_search_radius) * code_length
+        # else:
+        #     self.max_search_radius = np.array(max_search_radius)
 
         # tilingType = 'cartesian'
         # if spherical:
@@ -897,7 +888,7 @@ class SmoothingFilter:
         elif (tilingType == 'spherical'):
             self._do_region_selection_spherical()
 
-        self.extra_layer_thickness = np.max(2 * self.hsml) + self.max_search_radius
+        self.extra_layer_thickness = np.max(self.hsml) + self.max_search_radius
         if pa.settings.use_units:
             self.extra_layer_thickness_value = self.extra_layer_thickness.value
         else:
@@ -931,24 +922,24 @@ class SmoothingFilter:
 
         # Send subset of snapshot to GPU
         # get the index of the region of projection
-        # thickness = 2 * self.hsml 
+        thickness = self.hsml 
         if self.orientation is None:
             get_index = pa.util.get_index_of_cubic_region_plus_thin_layer
-            # indicesFirstPass = get_index(self.snap["0_Coordinates"],
-            #                        center, widths, thickness,
-            #                        snap.box)
-            # self.max_search_radius = np.max(self.search_radius[indicesFirstPass])
-            thickness = 2 * self.hsml + self.max_search_radius
+            self.indicesFirstPass = get_index(self.snap["0_Coordinates"],
+                                   center, widths, thickness,
+                                   snap.box)
+            self.max_search_radius = np.max(self.search_radius[self.indicesFirstPass])
+            thickness = self.hsml + self.max_search_radius
             self.index = get_index(self.snap["0_Coordinates"],
                                    center, widths, thickness,
                                    snap.box)
         else:
             get_index = pa.util.get_index_of_rotated_cubic_region_plus_thin_layer
-            # indicesFirstPass = get_index(self.snap["0_Coordinates"],
-            #                        center, widths, thickness, snap.box,
-            #                        self.orientation)
-            # self.max_search_radius = np.max(self.search_radius[indicesFirstPass])
-            thickness = 2 * self.hsml + self.max_search_radius
+            self.indicesFirstPass = get_index(self.snap["0_Coordinates"],
+                                   center, widths, thickness, snap.box,
+                                   self.orientation)
+            self.max_search_radius = np.max(self.search_radius[self.indicesFirstPass])
+            thickness = self.hsml + self.max_search_radius
             self.index = get_index(self.snap["0_Coordinates"],
                                    center, widths, thickness, snap.box,
                                    self.orientation)
@@ -976,12 +967,12 @@ class SmoothingFilter:
 
         # Send subset of snapshot to GPU
         # get the index of the region of projection
-        # thickness = 2 * self.hsml         
+        thickness = self.hsml         
         get_index = pa.util.get_index_of_radial_range_plus_thin_layer
-        # indicesFirstPass = get_index(self.snap["0_Coordinates"],
-        #                        center, rMin, rMax, thickness)
-        # self.max_search_radius = np.max(self.search_radius[indicesFirstPass])
-        thickness = 2 * self.hsml + self.max_search_radius
+        self.indicesFirstPass = get_index(self.snap["0_Coordinates"],
+                               center, rMin, rMax, thickness)
+        self.max_search_radius = np.max(self.search_radius[self.indicesFirstPass])
+        thickness = self.hsml + self.max_search_radius
         self.index = get_index(self.snap["0_Coordinates"],
                                center, rMin, rMax, thickness)
 
@@ -1047,6 +1038,8 @@ class SmoothingFilter:
         elif filter_type == "gaussian":
             filter_type = 1
         smooth_var = cp.zeros_like(variable)
+        hitsNeighbours = cp.zeros(variable.shape,dtype="int")
+        isParticleInDomain = cp.zeros(variable.shape,dtype="int")
 
         if cp.max(filter_lengths) > self.extra_layer_thickness_value:
             err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
@@ -1061,13 +1054,16 @@ class SmoothingFilter:
             apply_filter[self.blocks_1d, self.threadsperblock](pos, hsml, tile_index, start_index_for_tile,
                                                            particles_per_tile, tile_widths,
                                                            variable, weights, offsets, npixs, center, widths, 
-                                                           filter_lengths, smooth_var, filter_type)
+                                                           filter_lengths, smooth_var, filter_type, hitsNeighbours,
+                                                              isParticleInDomain)
         elif self.spherical:
             apply_filter_spherical[self.blocks_1d, self.threadsperblock](pos, hsml, tile_index, start_index_for_tile,
                                                            particles_per_tile, spacings,
                                                            variable, weights, nSects, center, rMin, rMax, _rMin,
-                                                           filter_lengths, smooth_var, filter_type)
-
+                                                           filter_lengths, smooth_var, filter_type, hitsNeighbours,
+                                                                             isParticleInDomain)
+        self.hitsNeighbours = hitsNeighbours
+        self.isParticleInDomainUnSorted = isParticleInDomain[self.tile.unsort_index]
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
     def _send_variable_to_gpu(self, variable, gpu_key='input_variable'):
@@ -1128,7 +1124,7 @@ class SmoothingFilter:
         # send filter_length to gpu
         if isinstance(filter_length, np.ndarray):
             assert filter_length.shape[0] == self.index.shape[0]
-            if (np.max(filter_length[self.index]) > self.max_search_radius):
+            if (np.max(filter_length[self.indicesFirstPass]) > self.max_search_radius):
                 raise RuntimeError('The chosen filter length is larger than the \
                 maximum search radius. This would cause searching for cells that \
                 have not been moved to the GPU. To solve this decrease \
