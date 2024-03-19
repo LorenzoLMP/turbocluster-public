@@ -6,11 +6,26 @@ import math
 import paicos as pa
 from .cartesian_tiling import CartesianTiling
 from .spherical_tiling import SphericalTiling
-
+import nvtx
 # these two raise an error
 # from smoothing_filter_shared import compute_max_hsml, check_block, compactify_in_domain, apply_filter_shared
 # import smoothing_filter_shared
 
+@cuda.jit(device=True, inline=True)
+def find_tile_radial(particle_R, radSpacing, rMin, rMax, type, power):
+    """
+    rMin include the extra thickness (_rMin)
+    rMax include the extra thickness (_rMax)
+    type = 0 is log
+    type = 1 is power law with "power" exponent
+    """
+    radTileIndex = 0
+    if (type == 0):
+        if (particle_R > rMin):
+            radTileIndex = (math.log10(particle_R) - math.log10(rMin) ) // radSpacing
+    elif (type == 1):
+        radTileIndex = ( (particle_R - rMin)/(rMax - rMin) )**power // radSpacing
+    return int(radTileIndex)
 
 @cuda.jit()
 def compute_max_hsml(hsml,compactGrid,maxHsmlPerBlock):
@@ -78,9 +93,11 @@ def compactify_in_domain(fullCompactGrid, cumulative_occupancy, isBlockInDomain,
         
 
 
-@cuda.jit()
-def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
-                 variable, weights, center, widths, npixs, filter_lengths, smooth_var, filter_type):
+@cuda.jit(lineinfo=True)
+def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile, 
+                        particles_per_tile, tile_widths, variable, weights, center, 
+                        widths, npixs, filter_lengths, smooth_var, filter_type, 
+                        hitsNeighbours, isParticleInDomain):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -196,50 +213,102 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
 
     weight = 0.0
     smoothVarRegister = 0.0
-    for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-        for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-            for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                numNeighParticles = particles_per_tile[tile_x, tile_y,
-                                        tile_z]
-                startIdNeigh = start_index_for_tile[tile_x, tile_y,
-                                        tile_z]
-                remainingParticles = numNeighParticles
-                numIterations = (numNeighParticles + (numThreads - 1)) // numThreads
-                for iter in range(numIterations):
-                    # copy from neighbour tile
-                    if (threadId < remainingParticles):
-                        idParticle = startIdNeigh + threadId + iter * numThreads
-                        pos_x, pos_y, pos_z =  pos[idParticle]
-                        neighParticleBuf[threadId*5 + 0] = pos_x
-                        neighParticleBuf[threadId*5 + 1] = pos_y
-                        neighParticleBuf[threadId*5 + 2] = pos_z
-                        neighParticleBuf[threadId*5 + 3] = weights[idParticle]
-                        neighParticleBuf[threadId*5 + 4] = variable[idParticle]
-            
-                    cuda.syncthreads()
-                    numParticlesLoaded = numThreads if (remainingParticles >= numThreads) \
-                                        else remainingParticles
-                    remainingParticles -= numThreads
 
-                    # compute kernel overlap between loaded particles
-                    # and own particles
-                    if (threadId < numParticlesOwnBlock):    
-                        idOwnParticle = startIdxBlock + threadId
-                        ownFilterLength = ownParticle[threadId*7 + 5]
-                        for ip in range(numParticlesLoaded):
-                            ipShifted = (ip + threadId) % numParticlesLoaded
-                            dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
-                                            neighParticleBuf[ip*5:ip*5 + 3])
-                            # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
-                            #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
-                            if dist < ownFilterLength:
-                                weight_tmp = 1.0 * neighParticleBuf[ip*5 + 3]
-                                # weight_tmp = 1.0 * neighParticleBuf[ipShifted*5 + 3]
-                                weight += weight_tmp
-                                smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
-                                # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
-            
-                    cuda.syncthreads()
+    if filter_type == 0:
+        for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+            for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                    numNeighParticles = particles_per_tile[tile_x, tile_y,
+                                            tile_z]
+                    startIdNeigh = start_index_for_tile[tile_x, tile_y,
+                                            tile_z]
+                    remainingParticles = numNeighParticles
+                    numIterations = (numNeighParticles + (numThreads - 1)) // numThreads
+                    for iter in range(numIterations):
+                        # copy from neighbour tile
+                        if (threadId < remainingParticles):
+                            idParticle = startIdNeigh + threadId + iter * numThreads
+                            pos_x, pos_y, pos_z =  pos[idParticle]
+                            neighParticleBuf[threadId*5 + 0] = pos_x
+                            neighParticleBuf[threadId*5 + 1] = pos_y
+                            neighParticleBuf[threadId*5 + 2] = pos_z
+                            neighParticleBuf[threadId*5 + 3] = weights[idParticle]
+                            neighParticleBuf[threadId*5 + 4] = variable[idParticle]
+                
+                        cuda.syncthreads()
+                        numParticlesLoaded = numThreads if (remainingParticles >= numThreads) \
+                                            else remainingParticles
+                        remainingParticles -= numThreads
+    
+                        # compute kernel overlap between loaded particles
+                        # and own particles
+                        if (threadId < numParticlesOwnBlock):    
+                            idOwnParticle = startIdxBlock + threadId
+                            ownFilterLength = ownParticle[threadId*7 + 5]
+                            for ip in range(numParticlesLoaded):
+                                ipShifted = (ip + threadId) % numParticlesLoaded
+                                dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+                                                neighParticleBuf[ip*5:ip*5 + 3])
+                                # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+                                #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
+                                if dist < ownFilterLength:
+                                    weight_tmp = 1.0 * neighParticleBuf[ip*5 + 3]
+                                    # weight_tmp = 1.0 * neighParticleBuf[ipShifted*5 + 3]
+                                    weight += weight_tmp
+                                    smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
+                                    # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
+                                    hitsNeighbours[idOwnParticle] += 1
+                
+                        cuda.syncthreads()
+    
+    elif filter_type == 1:
+        for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+            for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                    numNeighParticles = particles_per_tile[tile_x, tile_y,
+                                            tile_z]
+                    startIdNeigh = start_index_for_tile[tile_x, tile_y,
+                                            tile_z]
+                    remainingParticles = numNeighParticles
+                    numIterations = (numNeighParticles + (numThreads - 1)) // numThreads
+                    for iter in range(numIterations):
+                        # copy from neighbour tile
+                        if (threadId < remainingParticles):
+                            idParticle = startIdNeigh + threadId + iter * numThreads
+                            pos_x, pos_y, pos_z =  pos[idParticle]
+                            neighParticleBuf[threadId*5 + 0] = pos_x
+                            neighParticleBuf[threadId*5 + 1] = pos_y
+                            neighParticleBuf[threadId*5 + 2] = pos_z
+                            neighParticleBuf[threadId*5 + 3] = weights[idParticle]
+                            neighParticleBuf[threadId*5 + 4] = variable[idParticle]
+                
+                        cuda.syncthreads()
+                        numParticlesLoaded = numThreads if (remainingParticles >= numThreads) \
+                                            else remainingParticles
+                        remainingParticles -= numThreads
+    
+                        # compute kernel overlap between loaded particles
+                        # and own particles
+                        if (threadId < numParticlesOwnBlock):    
+                            idOwnParticle = startIdxBlock + threadId
+                            ownFilterLength = ownParticle[threadId*7 + 5]
+                            for ip in range(numParticlesLoaded):
+                                ipShifted = (ip + threadId) % numParticlesLoaded
+                                dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+                                                neighParticleBuf[ip*5:ip*5 + 3])
+                                # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+                                #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
+                                if dist < ownFilterLength:
+                                    weight_tmp = gaussian_kernel(dist, ownFilterLength / filter_window) \
+                                                * neighParticleBuf[ip*5 + 3]
+                                    # weight_tmp = gaussian_kernel(dist, ownFilterLength / filter_window) \
+                                    #             * neighParticleBuf[ipShifted*5 + 3]
+                                    weight += weight_tmp
+                                    smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
+                                    # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
+                                    hitsNeighbours[idOwnParticle] += 1
+                
+                        cuda.syncthreads()
 
 
     if (threadId < numParticlesOwnBlock):   
@@ -269,6 +338,7 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
             and (yp > ymin) and (yp < ymax) 
                 and (zp > zmin) and (zp < zmax)):
                     smooth_var[idOwnParticle] = smoothVarRegister
+                    isParticleInDomain[idOwnParticle] += 1
 
 @cuda.jit(device=True, inline=True)
 def check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
@@ -348,7 +418,7 @@ def compactify_particles(pos, tile_index, cumulative_occupancy_flat, isParticleI
         if (isParticleInDomain[ip] > 0):
             oldIndex[newPos - 1] = ip
             
-@cuda.jit()
+@cuda.jit(lineinfo=True)
 def apply_filter_optimized(oldIndex, pos, hsml, tile_index, 
                      start_index_for_tile, particles_per_tile, tile_widths,
                      variable, weights, offsets, npixs, center, widths, filter_lengths, 
@@ -455,7 +525,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
 
             
 
-@cuda.jit()
+@cuda.jit(lineinfo=True)
 def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
                  variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, 
                  filter_type, hitsNeighbours, isParticleInDomain):
@@ -579,12 +649,12 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
         if weight > 0.:
             smooth_var[ip] /= weight
 
-@cuda.jit()
+@cuda.jit(lineinfo=True)
 def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                            particles_per_tile, spacings,
                            variable, weights, nSects, center, rMin, rMax, 
-                           _rMin, filter_lengths, smooth_var, filter_type, 
-                            hitsNeighbours, isParticleInDomain):
+                           _rMin, _rMax, filter_lengths, smooth_var, filter_type, 
+                            hitsNeighbours, isParticleInDomain, typeGrid, power):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -710,10 +780,12 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
         delta_rad = filter_length
         ip_tile_rad_min = 0
         if (rp - delta_rad > _rMin):
-            ip_tile_rad_min = int((math.log10(rp - delta_rad) - \
-                               math.log10(_rMin) ) // radSpacing)
-        ip_tile_rad_max = int((math.log10(rp + delta_rad) - \
-                           math.log10(_rMin) ) // radSpacing)
+            # ip_tile_rad_min = int((math.log10(rp - delta_rad) - \
+            #                    math.log10(_rMin) ) // radSpacing)
+            ip_tile_rad_min = find_tile_radial(rp - delta_rad, radSpacing, _rMin, _rMax, typeGrid, power)
+        # ip_tile_rad_max = int((math.log10(rp + delta_rad) - \
+        #                    math.log10(_rMin) ) // radSpacing)
+        ip_tile_rad_max = find_tile_radial(rp + delta_rad, radSpacing, _rMin, _rMax, typeGrid, power)
             
         
         if filter_type == 0:
@@ -776,7 +848,7 @@ class SmoothingFilter:
 
     def __init__(self, snap, center, widths, orientation=None, search_radius=None,
                  npix=128, threadsperblock=256, tilingType='cartesian', numPhi=-1, 
-                 numTheta=-1, rMin=-1.0, rMax=-1.0):
+                 numTheta=-1, rMin=-1.0, rMax=-1.0, typeGrid='log', powerGrid=0):
         """
         If spherical=True, npix is the number of intervals in the radial direction
         in the phi and theta direction we have npix, and npix/2 intervals
@@ -800,6 +872,13 @@ class SmoothingFilter:
             self.cartesian = True
             self.spherical = False
 
+        # only used with spherical tiling
+        if (typeGrid == 'log'):
+            self.typeGrid = 0
+        elif (typeGrid == 'power-law'):
+            self.typeGrid = 1
+        self.powerGrid = powerGrid
+        
         code_length = self.snap.length
 
         if hasattr(center, 'unit'):
@@ -902,8 +981,8 @@ class SmoothingFilter:
         elif (tilingType == 'spherical'):
             self.tile = SphericalTiling(self.gpu_variables['pos'], self.gpu_variables['center'],
                                         rMin, rMax, self.extra_layer_thickness_value,
-                                        nRadial=128, nPhi=128, nTheta=64,
-                                        threadsperblock=256)
+                                        nRadial=numRad, nPhi=numPhi, nTheta=numTheta,
+                                        type=typeGrid, power=powerGrid, threadsperblock=256)
 
         # Do the sorting
         self.gpu_variables['pos'] = self.gpu_variables['pos'][self.tile.sort_index, :]
@@ -1030,6 +1109,8 @@ class SmoothingFilter:
             rMax = self.rMax.value
             nSects = self.tile.nSects
             spacings = self.tile.spacings
+            typeGrid = self.typeGrid
+            power    = self.powerGrid
         
         
         filter_lengths = self.gpu_variables['filter_lengths']
@@ -1051,17 +1132,21 @@ class SmoothingFilter:
             weights = cp.ones_like(variable)
 
         if self.cartesian:
+            rng = nvtx.start_range(message="cartesian filter")
             apply_filter[self.blocks_1d, self.threadsperblock](pos, hsml, tile_index, start_index_for_tile,
                                                            particles_per_tile, tile_widths,
                                                            variable, weights, offsets, npixs, center, widths, 
                                                            filter_lengths, smooth_var, filter_type, hitsNeighbours,
                                                               isParticleInDomain)
+            nvtx.end_range(rng)
         elif self.spherical:
+            rng = nvtx.start_range(message="spherical filter")
             apply_filter_spherical[self.blocks_1d, self.threadsperblock](pos, hsml, tile_index, start_index_for_tile,
                                                            particles_per_tile, spacings,
-                                                           variable, weights, nSects, center, rMin, rMax, _rMin,
+                                                           variable, weights, nSects, center, rMin, rMax, _rMin, _rMax,
                                                            filter_lengths, smooth_var, filter_type, hitsNeighbours,
-                                                                             isParticleInDomain)
+                                                           isParticleInDomain, typeGrid, power)
+            nvtx.end_range(rng)
         self.hitsNeighbours = hitsNeighbours
         self.isParticleInDomainUnSorted = isParticleInDomain[self.tile.unsort_index]
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
@@ -1117,10 +1202,6 @@ class SmoothingFilter:
             else:
                 raise RuntimeError('has to be a string')
 
-        if shared_mem and filter_type == "gaussian":
-            raise RuntimeError('shared_mem has been tested only \
-                                with filter_type="mean"')
-
         # send filter_length to gpu
         if isinstance(filter_length, np.ndarray):
             assert filter_length.shape[0] == self.index.shape[0]
@@ -1171,9 +1252,9 @@ class SmoothingFilter:
             filter_type = 0
         elif filter_type == "gaussian":
             filter_type = 1
-        if filter_type == "gaussian":
-            raise RuntimeError('shared_mem has been tested only \
-                                with filter_type="mean"')
+        # if filter_type == "gaussian":
+        #     raise RuntimeError('shared_mem has been tested only \
+        #                         with filter_type="mean"')
         smooth_var = cp.zeros_like(variable)
 
         if cp.max(filter_lengths) > self.extra_layer_thickness_value:
@@ -1218,11 +1299,19 @@ class SmoothingFilter:
         self.sharedMemBuf = sharedMemBuf
         print("numBlocksInDomain = %d"%(numBlocksInDomain))
 
+        hitsNeighbours = cp.zeros(variable.shape,dtype="int")
+        isParticleInDomain = cp.zeros(variable.shape,dtype="int")
+
+        rng = nvtx.start_range(message="shared cartesian filter")
         apply_filter_shared[numBlocksInDomain, Nmax, 0, sharedMemBuf](compactGrid, pos, hsml, tile_index, 
                                                      start_index_for_tile, particles_per_tile, 
                                                      tile_widths, variable, weights, center, 
-                                                     widths, npixs, filter_lengths, smooth_var, filter_type)
+                                                     widths, npixs, filter_lengths, smooth_var, filter_type,
+                                                                     hitsNeighbours, isParticleInDomain)
+        nvtx.end_range(rng)
 
+        self.hitsNeighbours = hitsNeighbours
+        self.isParticleInDomainUnSorted = isParticleInDomain[self.tile.unsort_index]
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
 

@@ -3,19 +3,27 @@ from numba import cuda
 import math
 
 @cuda.jit(device=True, inline=True)
-def find_tile_radial(particle_R, radSpacing, rMin):
+def find_tile_radial(particle_R, radSpacing, rMin, rMax, type, power):
     """
     rMin include the extra thickness (_rMin)
+    rMax include the extra thickness (_rMax)
+    type = 0 is log
+    type = 1 is power law with "power" exponent
     """
     radTileIndex = 0
-    if (particle_R > rMin):
-        radTileIndex = (math.log10(particle_R) - math.log10(rMin) ) // radSpacing
+    if (type == 0):
+        if (particle_R > rMin):
+            radTileIndex = (math.log10(particle_R) - math.log10(rMin) ) // radSpacing
+    elif (type == 1):
+        radTileIndex = ( (particle_R - rMin)/(rMax - rMin) )**power // radSpacing
     return int(radTileIndex)
 
 
+
+
 @cuda.jit
-def find_tile_index_spherical(pos, radSpacing, rMin, tile_index,
-                             phiSpacing, phiMin, theSpacing, theMin):
+def find_tile_index_spherical(pos, radSpacing, rMin, rMax, tile_index,
+                             phiSpacing, phiMin, theSpacing, theMin, type, power):
     """
     pos is relative to the origin.
     tile_index[i] = (R_i, phi_i, theta_i)
@@ -24,6 +32,9 @@ def find_tile_index_spherical(pos, radSpacing, rMin, tile_index,
     We are assuming that phi can go from [0, 2\pi], and
     \theta from [0, \pi], but in theory on can modify to
     accept only a specific range.
+    rMax include the extra thickness (_rMax)
+    type = 0 is log
+    type = 1 is power law with "power" exponent
     """
     ip = cuda.grid(1)
 
@@ -35,7 +46,7 @@ def find_tile_index_spherical(pos, radSpacing, rMin, tile_index,
         phi = math.atan2(yp, xp) % (2.0*math.pi)
         theta = math.acos(zp/rp)
         
-        ip_tile_rad = find_tile_radial(rp, radSpacing, rMin)
+        ip_tile_rad = find_tile_radial(rp, radSpacing, rMin, rMax, type, power)
         ip_tile_phi = int((phi - phiMin) // phiSpacing)
         ip_tile_the = int((theta - theMin) // theSpacing)
         # ip_tile_x = find_tile_single_dim(xp, npixs[0], tile_widths[0])
@@ -90,7 +101,7 @@ class SphericalTiling:
     """
 
     def __init__(self, positions, center, rMin, rMax, extra_layer_thickness,
-                 nRadial=128, nPhi=128, nTheta=64,
+                 nRadial=128, nPhi=128, nTheta=64, type='log', power=0,
                  threadsperblock=256):
 
         """
@@ -102,6 +113,8 @@ class SphericalTiling:
         the radial grid (computed by SphericalTiling)
         _rMin < rMin
         _rMax > rMax
+        type = 0 is log
+        type = 1 is power law with "power" exponent
         """
 
         Np = positions.shape[0]
@@ -134,15 +147,26 @@ class SphericalTiling:
             # Particles selected with the _do_region_selection_spherical()
             # may have radius < _rMin. In this case the find_tile_radial 
             # function will always put them in the 0-th radial sector
-            _rMin = _rMax * 1e-4
+            if (type == 'log'):
+                _rMin = _rMax * 1e-2
+            elif (type == 'power-law'):
+                _rMin = rMin * 0.0
         
         self._rMin = _rMin
         self._rMax = _rMax
-        
-        # logarhithmic spacing (can also be a power-law...)
-        # let's assume that the radial spacing is of the form
-        # radialSpacing = np.logspace(np.log10(_rMin),np.log10(_rMax),nSectRad+1)
-        self.radSpacing = (math.log10(_rMax) - math.log10(_rMin)) / nSectRad
+
+        if (type == 'log'):
+            # logarhithmic spacing (can also be a power-law...)
+            # let's assume that the radial spacing is of the form
+            # radialSpacing = np.logspace(np.log10(_rMin),np.log10(_rMax),nSectRad+1)
+            self.radSpacing = (math.log10(_rMax) - math.log10(_rMin)) / nSectRad
+            typeGrid = 0
+        elif (type == 'power-law'):
+            # let's assume that the radial spacing is uniform in the variable y
+            # y = ( (r - _rMin)/ (_rMax - _rMin) ) ** power
+            # so that y \in [0,1], which we split in nSectRad sectors
+            self.radSpacing = 1.0 / nSectRad
+            typeGrid = 1
 
         self.phiMin = 0.0
         self.theMin = 0.0
@@ -165,8 +189,8 @@ class SphericalTiling:
             (nSectRad, nSectPhi, nSectThe), dtype=int) * Np + 1
                                 
         find_tile_index_spherical[blocks_1d, threadsperblock](
-            self._pos, self.radSpacing, _rMin, self.tile_index,
-            self.phiSpacing, self.phiMin, self.theSpacing, self.theMin)
+            self._pos, self.radSpacing, _rMin, _rMax, self.tile_index,
+            self.phiSpacing, self.phiMin, self.theSpacing, self.theMin, typeGrid, power)
 
         # here the indexing is such that:
         # idx = theta_k + nSectThe * ( phi_j + nSectPhi * R_i)
