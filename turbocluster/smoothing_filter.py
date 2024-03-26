@@ -854,7 +854,9 @@ class SmoothingFilter:
         in the phi and theta direction we have npix, and npix/2 intervals
         by default
         """
-
+        rng0 = nvtx.start_range(message="init_smoothing")
+        
+        
         if orientation is not None:
             raise RuntimeError('not implemented')
         if (tilingType == 'spherical'):
@@ -931,7 +933,9 @@ class SmoothingFilter:
         self.pos = self.snap["0_Coordinates"]
 
         # Calculate the smoothing length
+        rng = nvtx.start_range(message="smoothing_length")
         self.hsml = 2.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
+        nvtx.end_range(rng)
 
         if pa.settings.use_units:
             self.hsml = self.hsml.to(self.pos.unit)
@@ -962,10 +966,12 @@ class SmoothingFilter:
         # if spherical:
         #     tilingType = 'spherical'
 
+        # rng = nvtx.start_range(message="region_selection")
         if (tilingType == 'cartesian'):
             self._do_region_selection()
         elif (tilingType == 'spherical'):
             self._do_region_selection_spherical()
+        # nvtx.end_range(rng)
 
         self.extra_layer_thickness = np.max(self.hsml) + self.max_search_radius
         if pa.settings.use_units:
@@ -993,6 +999,8 @@ class SmoothingFilter:
         self.blocks_1d = (Np + (threadsperblock - 1)) // threadsperblock
         self.threadsperblock = threadsperblock
 
+        nvtx.end_range(rng0)
+
     def _do_region_selection(self):
 
         center = self.center
@@ -1002,6 +1010,7 @@ class SmoothingFilter:
         # Send subset of snapshot to GPU
         # get the index of the region of projection
         thickness = self.hsml 
+        rng = nvtx.start_range(message="region_selection")
         if self.orientation is None:
             get_index = pa.util.get_index_of_cubic_region_plus_thin_layer
             self.indicesFirstPass = get_index(self.snap["0_Coordinates"],
@@ -1022,6 +1031,7 @@ class SmoothingFilter:
             self.index = get_index(self.snap["0_Coordinates"],
                                    center, widths, thickness, snap.box,
                                    self.orientation)
+        nvtx.end_range(rng)
 
         self.pos = self.pos[self.index]
         self.hsml = self.hsml[self.index]
@@ -1122,9 +1132,12 @@ class SmoothingFilter:
         hitsNeighbours = cp.zeros(variable.shape,dtype="int")
         isParticleInDomain = cp.zeros(variable.shape,dtype="int")
 
-        if cp.max(filter_lengths) > self.extra_layer_thickness_value:
-            err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
-            raise RuntimeError(err_msg)
+        # this is now wrong because filter_lengths includes also that
+        # of the particles in the extra layer (the boundary), for which no
+        # computation is made. 
+        # if cp.max(filter_lengths) > self.extra_layer_thickness_value:
+        #     err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
+        #     raise RuntimeError(err_msg)
 
         if weight is not None:
             weights = self.gpu_variables[weight]
@@ -1194,6 +1207,8 @@ class SmoothingFilter:
         in "logic" blocks with Nmax particles max (can be less, but not zero)
         and assigned to exactly 1 block of threads with Nmax threads
         """
+        rng0 = nvtx.start_range(message="do_filter")
+        
         variable_str, unit_quantity = self._send_variable_to_gpu(variable)
 
         if weight is not None:
@@ -1234,6 +1249,8 @@ class SmoothingFilter:
         if unit_quantity is not None:
             smooth_variable = smooth_variable * unit_quantity
 
+        nvtx.end_range(rng0)
+        
         return smooth_variable
 
     def _apply_filter_gpu_shared(self, variable_str, weight, filter_type, Nmax):

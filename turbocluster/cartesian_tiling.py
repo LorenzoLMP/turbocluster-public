@@ -1,6 +1,6 @@
 import cupy as cp
 from numba import cuda
-
+import nvtx
 
 @cuda.jit(device=True, inline=True)
 def find_tile_single_dim(particle_pos, nx, tile_width):
@@ -104,22 +104,28 @@ class CartesianTiling:
         self.start_index_for_tile = cp.ones(
             (npix_x, npix_y, npix_z), dtype=int) * Np + 1
 
+        rng = nvtx.start_range(message="find_tile_index")
         find_tile_index[blocks_1d, threadsperblock](
             self._pos, self.npixs, self.tile_widths, self.tile_index)
+        nvtx.end_range(rng)
 
+        rng = nvtx.start_range(message="sort_index")
         self.sort_index = cp.argsort(self.tile_index[:, 2] * npix_x * npix_y
                                      + self.tile_index[:, 1] * npix_x +
                                      self.tile_index[:, 0])
-
+        nvtx.end_range(rng)
+        
         unsort_index = cp.zeros(Np, dtype=int)
         unsort_index[self.sort_index] = cp.arange(Np)
         self.unsort_index = unsort_index
 
         self.tile_index = self.tile_index[self.sort_index, :]
-
+        
+        rng = nvtx.start_range(message="get_tile_information")
         get_tile_information[blocks_1d, threadsperblock](
             self.tile_index, self.particles_per_tile,
             self.start_index_for_tile)
+        nvtx.end_range(rng)
 
 
     def compactify_grid(self, Nmax):
