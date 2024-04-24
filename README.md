@@ -65,5 +65,7 @@ ssh  -L 2012:localhost:2012 -J  berlok@login.aip.de,berlok@obelisk,berlok@nnewl3
 Now open the jupyter server in a browser, e.g., go to http://127.0.0.1:2012/tree
 Then you can hopefully make a notebook that looks like this:
 
+<img src="images/newton-gpu-example.png" width="auto">
+
 
 
