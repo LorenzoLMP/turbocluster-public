@@ -67,5 +67,28 @@ Then you can hopefully make a notebook that looks like this:
 
 <img src="images/newton-gpu-example.png" width="auto">
 
+### Convenient functions in bash_profile
+
+I have added the following in my bash_profile to make things a bit easier:
+
+```
+function jun3ex(){
+    # e.g. jun3ex 8888 2012 to access a jupyter server running on 8888
+    # in your browser at 2012: http://127.0.0.1:2012/tree
+        ssh  -L $1:localhost:$2 -J  berlok@login.aip.de,berlok@obelisk  berlok@nnewl3.cls
+}
+
+function ngpu049(){
+        ssh  -L $1:localhost:$2 -J  berlok@login.aip.de,berlok@obelisk,berlok@nnewl3.cls ngpu049
+}
+
+function ngpu050(){
+        ssh  -L $1:localhost:$2 -J  berlok@login.aip.de,berlok@obelisk,berlok@nnewl3.cls ngpu050
+}
+
+function juas(){
+        ssh berlok@astro02.hpc.ku.dk -L $1:localhost:$2 -N
+}
+```
 
 
