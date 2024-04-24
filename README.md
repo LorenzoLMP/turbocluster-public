@@ -44,7 +44,7 @@ python -c "import paicos; paicos.gpu_init()"
 First follow the installation instructions above, then
 ```
 conda activate paicos-conda
-conda install jupyter
+conda install jupyter ipympl
 ```
 
 Now get a GPU
