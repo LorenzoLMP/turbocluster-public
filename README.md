@@ -45,6 +45,7 @@ First follow the installation instructions above, then
 ```
 conda activate paicos-conda
 conda install jupyter ipympl
+pip install jupyterlab-widgets
 ```
 
 Now get a GPU
