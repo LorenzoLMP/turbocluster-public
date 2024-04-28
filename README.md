@@ -74,7 +74,7 @@ I have added the following in my bash_profile to make things a bit easier:
 
 ```
 function jun3ex(){
-    # e.g. jun3ex 8888 2012 to access a jupyter server running on 8888
+    # e.g. jun3ex 2012 8888 to access a jupyter server running on 8888
     # in your browser at 2012: http://127.0.0.1:2012/tree
         ssh  -L $1:localhost:$2 -J  berlok@login.aip.de,berlok@obelisk  berlok@nnewl3.cls
 }
