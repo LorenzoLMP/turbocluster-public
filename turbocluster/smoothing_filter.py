@@ -422,7 +422,8 @@ def compactify_particles(pos, tile_index, cumulative_occupancy_flat, isParticleI
 def apply_filter_optimized(oldIndex, pos, hsml, tile_index, 
                      start_index_for_tile, particles_per_tile, tile_widths,
                      variable, weights, offsets, npixs, center, widths, filter_lengths, 
-                     smooth_var, filter_type):
+                     smooth_var, filter_type, hitsNeighbours, isParticleInDomain, 
+                     iterativeFilter, hasConverged, numIterations, filter_lengths_out):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -438,10 +439,32 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
         yp = pos[oldIp, 1]
         zp = pos[oldIp, 2]
 
-        # in theory we can have different filter lengths per particle
-        # for the iterative scheme in Vazza this number is gradually increased
-        # maybe this function needs to be reworked in that case...
-        filter_length = filter_lengths[oldIp]
+        oldVarRegister = variable[oldIp]
+
+        if (iterativeFilter == 0): # no iterative
+            filter_length = filter_lengths[oldIp]
+        else: #iterative
+            # iterative scheme ~Vazza+2012 
+            # filter length is gradually increased
+            filter_length = 0.1 * filter_lengths[oldIp] 
+            if (0.1 * filter_lengths[oldIp] < 1.0 * hsml[oldIp]):  
+                filter_length = 1.0 * hsml[oldIp] 
+            # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
+            
+        filterIncrease = 0.5*hsml[oldIp] # it is additive factor (?)
+        max_filter_length = 5.0*filter_lengths[oldIp] 
+        # need to make sure that with max_filter_length it does not go
+        # beyond region loaded on GPU
+        
+        hasIterationConverged = False
+    
+        turbFieldOld = 0.0
+        turbFieldNew = 0.0
+        toleranceParam = 0.1
+    
+        numInteractingPartOld = 0
+        numInteractingPartNew = 0
+        
 
         ip_tile_x = tile_index[oldIp, 0]
         ip_tile_y = tile_index[oldIp, 1]
@@ -452,83 +475,138 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
         delta_y = yp - offsets[1] - (ip_tile_y + 0.5) * tile_widths[1] 
         delta_z = zp - offsets[2] - (ip_tile_z + 0.5) * tile_widths[2] 
     
-        # tile_pos = tile_positions[tile_x, tile_y, tile_z]
-        # tile_widths
-        weight = 0.0
-        weight_tmp = 0.0
-        smoothVarRegister = 0.0
-    
         filter_window = 1
         # for gaussian filter the sigma is  1/4 of the
         # filter_length of the source particle
         if filter_type == 1:
             filter_window = 4
 
-        ip_tile_x_min = ip_tile_x - (- delta_x + \
-                        filter_length + tile_widths[0] / 2) // tile_widths[0] 
-        ip_tile_x_max = ip_tile_x + (delta_x +   \
-                        filter_length + tile_widths[0] / 2) // tile_widths[0] 
-    
-        ip_tile_y_min = ip_tile_y - (- delta_y + \
-                        filter_length + tile_widths[1] / 2) // tile_widths[1] 
-        ip_tile_y_max = ip_tile_y + (delta_y +   \
-                        filter_length + tile_widths[1] / 2) // tile_widths[1] 
-    
-        ip_tile_z_min = ip_tile_z - (- delta_z + \
-                        filter_length + tile_widths[2] / 2) // tile_widths[2] 
-        ip_tile_z_max = ip_tile_z + (delta_z +   \
-                        filter_length + tile_widths[2] / 2) // tile_widths[2] 
-    
-        if filter_type == 0:
-            for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-                for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-                    for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                        if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
-                                          tile_x, tile_y, tile_z,
-                                          delta_x, delta_y, delta_z,
-                                          tile_widths, filter_length):
+        numIter = 0
+        while (filter_length <= max_filter_length and not hasIterationConverged):
+            # the idea is to use this while loop both for iterative and non-iterative case
+            # if non-iterative we exit after one go
+            
+            smoothVarRegister = 0.0
+            weight = 0.0
+            weight_tmp = 0.0
+            numInteractingPartNew = 0
 
-                            start_index = start_index_for_tile[tile_x,
-                                                               tile_y, tile_z]
-                            n_particles = particles_per_tile[tile_x,
-                                                             tile_y, tile_z]
+            ####################################
+            # code to check what are the tiles that can overlap
+            # with the particle filter_length
+            ####################################
+
+            
+            ip_tile_x_min = ip_tile_x - (- delta_x + \
+                            filter_length + tile_widths[0] / 2) // tile_widths[0] 
+            ip_tile_x_max = ip_tile_x + (delta_x +   \
+                            filter_length + tile_widths[0] / 2) // tile_widths[0] 
         
-                            for ip_other in range(start_index, start_index + n_particles):
-                                dist = distance(pos[oldIp], pos[ip_other])
-                                if dist < filter_length:
-                                    weight_tmp = 1.0 * weights[ip_other]
-                                    weight += weight_tmp
-                                    smoothVarRegister += variable[ip_other] * weight_tmp
+            ip_tile_y_min = ip_tile_y - (- delta_y + \
+                            filter_length + tile_widths[1] / 2) // tile_widths[1] 
+            ip_tile_y_max = ip_tile_y + (delta_y +   \
+                            filter_length + tile_widths[1] / 2) // tile_widths[1] 
+        
+            ip_tile_z_min = ip_tile_z - (- delta_z + \
+                            filter_length + tile_widths[2] / 2) // tile_widths[2] 
+            ip_tile_z_max = ip_tile_z + (delta_z +   \
+                            filter_length + tile_widths[2] / 2) // tile_widths[2] 
+
+            ####################################
+            # end of code to check overlap
+            ####################################
+            
+            if filter_type == 0:
+                for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+                    for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                        for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                            if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                                              tile_x, tile_y, tile_z,
+                                              delta_x, delta_y, delta_z,
+                                              tile_widths, filter_length):
     
-        elif filter_type == 1:
-            for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-                for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-                    for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                        if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
-                                          tile_x, tile_y, tile_z,
-                                          delta_x, delta_y, delta_z,
-                                          tile_widths, filter_length):
-                            start_index = start_index_for_tile[tile_x,
-                                                               tile_y, tile_z]
-                            n_particles = particles_per_tile[tile_x,
-                                                             tile_y, tile_z]
+                                start_index = start_index_for_tile[tile_x,
+                                                                   tile_y, tile_z]
+                                n_particles = particles_per_tile[tile_x,
+                                                                 tile_y, tile_z]
+            
+                                for ip_other in range(start_index, start_index + n_particles):
+                                    dist = distance((xp, yp, zp), pos[ip_other])
+                                    if dist < filter_length:
+                                        weight_tmp = 1.0 * weights[ip_other]
+                                        weight += weight_tmp
+                                        smoothVarRegister += variable[ip_other] * weight_tmp
+                                        numInteractingPartNew += 1
         
-                            for ip_other in range(start_index, start_index + n_particles):
-                                dist = distance(pos[oldIp], pos[ip_other])
-                                if dist < filter_length:
-                                    weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
-                                    weight += weight_tmp
-                                    smoothVarRegister += variable[ip_other] * weight_tmp
-        
-        if weight > 0.:
-            smooth_var[oldIp] = smoothVarRegister/weight
+            elif filter_type == 1:
+                for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+                    for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                        for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                            if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                                              tile_x, tile_y, tile_z,
+                                              delta_x, delta_y, delta_z,
+                                              tile_widths, filter_length):
+                                start_index = start_index_for_tile[tile_x,
+                                                                   tile_y, tile_z]
+                                n_particles = particles_per_tile[tile_x,
+                                                                 tile_y, tile_z]
+            
+                                for ip_other in range(start_index, start_index + n_particles):
+                                    dist = distance((xp, yp, zp), pos[ip_other])
+                                    if dist < filter_length:
+                                        weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
+                                        weight += weight_tmp
+                                        smoothVarRegister += variable[ip_other] * weight_tmp
+                                        numInteractingPartNew += 1
+            
+            if weight > 0.:
+                smoothVarRegister /= weight
+
+            ################################
+            # part to check convergence of iterative filter
+            ################################
+            
+            if (iterativeFilter == 0): # no iterative
+                hasIterationConverged = True
+            else: # iterative
+                turbFieldNew = oldVarRegister - smoothVarRegister
+                relIncrease =  abs(turbFieldNew - turbFieldOld) / abs(turbFieldOld)
+                # we declare the iteration converged when all the following are satisfied:
+                # 1. the relative increase is less than the tolerance
+                # 2. we have done at least one iteration (so we can compare old and new)
+                # 3. the number of particles at the new iteration has increased
+                # (if the number did not increase this would naturally cause 1. to be true)
+                if (relIncrease <= toleranceParam and numIter > 0 and numInteractingPartNew > numInteractingPartOld):
+                    hasIterationConverged = True
+                    hasConverged[oldIp] = 1
+                else: # not converged
+                    filter_length += filterIncrease
+                    turbFieldOld = turbFieldNew
+                    numIter += 1
+                    numInteractingPartOld = numInteractingPartNew
+
+            ################################
+            # end of check convergence of iterative filter
+            ################################
+
+        smooth_var[oldIp] = smoothVarRegister
+        hitsNeighbours[oldIp] = numInteractingPartNew
+        if (iterativeFilter == 1): # iterative
+            filter_lengths_out[oldIp] = filter_length
+            numIterations[oldIp] = numIter
+            if not hasIterationConverged:
+                # this is to adjust for the last iteration
+                filter_lengths_out[oldIp] -= filterIncrease
+                numIterations[oldIp] -= 1
+                
 
             
 
 @cuda.jit(lineinfo=True)
 def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
                  variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, 
-                 filter_type, hitsNeighbours, isParticleInDomain):
+                 filter_type, hitsNeighbours, isParticleInDomain, iterativeFilter, hasConverged, 
+                 numIterations, filter_lengths_out):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -541,6 +619,8 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
     yp = pos[ip, 1]
     zp = pos[ip, 2]
 
+    varRegister = variable[ip]
+
     xmin = center[0] - widths[0] / 2 - hsml[ip]
     xmax = center[0] + widths[0] / 2 + hsml[ip]
 
@@ -550,10 +630,31 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
     zmin = center[2] - widths[2] / 2 - hsml[ip]
     zmax = center[2] + widths[2] / 2 + hsml[ip]
 
-    # in theory we can have different filter lengths per particle
-    # for the iterative scheme in Vazza this number is gradually increased
-    # maybe this function needs to be reworked in that case...
-    filter_length = filter_lengths[ip]
+    
+    if (iterativeFilter == 0): # no iterative
+        filter_length = filter_lengths[ip]
+    else: #iterative
+        # iterative scheme ~Vazza+2012 
+        # filter length is gradually increased
+        filter_length = 0.1 * filter_lengths[ip] 
+        if (0.1 * filter_lengths[ip] < 1.0 * hsml[ip]):  
+            filter_length = 1.0 * hsml[ip] 
+        # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
+        
+    filterIncrease = 0.5*hsml[ip] # it is additive factor (?)
+    max_filter_length = 5.0*filter_lengths[ip] 
+    # need to make sure that with max_filter_length it does not go
+    # beyond region loaded on GPU
+    
+    hasIterationConverged = False
+
+    turbFieldOld = 0.0
+    turbFieldNew = 0.0
+    toleranceParam = 0.1
+
+    numInteractingPartOld = 0
+    numInteractingPartNew = 0
+    
 
     sidelength_x, sidelength_y, sidelength_z = widths
     nx, ny, nz = npixs
@@ -578,83 +679,135 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
         delta_y = yp - offsets[1] - (ip_tile_y + 0.5) * tile_widths[1] 
         delta_z = zp - offsets[2] - (ip_tile_z + 0.5) * tile_widths[2] 
 
-        # tile_pos = tile_positions[tile_x, tile_y, tile_z]
-        # tile_widths
-        weight = 0.0
-        weight_tmp = 0.0
-
         filter_window = 1
         # for gaussian filter the sigma is  1/4 of the
         # filter_length of the source particle
         if filter_type == 1:
             filter_window = 4
 
+        numIter = 0
+        while (filter_length <= max_filter_length and not hasIterationConverged):
+            # the idea is to use this while loop both for iterative and non-iterative case
+            # if non-iterative we exit after one go
+            scratchSmooth = 0.0
+            weight = 0.0
+            weight_tmp = 0.0
+            numInteractingPartNew = 0
 
-        ip_tile_x_min = ip_tile_x - (- delta_x + \
-                        filter_length + tile_widths[0] / 2) // tile_widths[0] 
-        ip_tile_x_max = ip_tile_x + (delta_x +   \
-                        filter_length + tile_widths[0] / 2) // tile_widths[0] 
-    
-        ip_tile_y_min = ip_tile_y - (- delta_y + \
-                        filter_length + tile_widths[1] / 2) // tile_widths[1] 
-        ip_tile_y_max = ip_tile_y + (delta_y +   \
-                        filter_length + tile_widths[1] / 2) // tile_widths[1] 
-    
-        ip_tile_z_min = ip_tile_z - (- delta_z + \
-                        filter_length + tile_widths[2] / 2) // tile_widths[2] 
-        ip_tile_z_max = ip_tile_z + (delta_z +   \
-                        filter_length + tile_widths[2] / 2) // tile_widths[2]
+            ####################################
+            # code to check what are the tiles that can overlap
+            # with the particle filter_length
+            ####################################
+            
+            ip_tile_x_min = ip_tile_x - (- delta_x + \
+                            filter_length + tile_widths[0] / 2) // tile_widths[0] 
+            ip_tile_x_max = ip_tile_x + (delta_x +   \
+                            filter_length + tile_widths[0] / 2) // tile_widths[0] 
+        
+            ip_tile_y_min = ip_tile_y - (- delta_y + \
+                            filter_length + tile_widths[1] / 2) // tile_widths[1] 
+            ip_tile_y_max = ip_tile_y + (delta_y +   \
+                            filter_length + tile_widths[1] / 2) // tile_widths[1] 
+        
+            ip_tile_z_min = ip_tile_z - (- delta_z + \
+                            filter_length + tile_widths[2] / 2) // tile_widths[2] 
+            ip_tile_z_max = ip_tile_z + (delta_z +   \
+                            filter_length + tile_widths[2] / 2) // tile_widths[2]
 
-        if filter_type == 0:
-            for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-                for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-                    for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                        if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
-                                          tile_x, tile_y, tile_z,
-                                          delta_x, delta_y, delta_z,
-                                          tile_widths, filter_length):
-                            start_index = start_index_for_tile[tile_x,
-                                                               tile_y, tile_z]
-                            n_particles = particles_per_tile[tile_x,
-                                                             tile_y, tile_z]
+            ####################################
+            # end of code to check overlap
+            ####################################
     
-                            for ip_other in range(start_index, start_index + n_particles):
-                                dist = distance(pos[ip], pos[ip_other])
-                                if dist < filter_length:
-                                    weight_tmp = 1.0 * weights[ip_other]
-                                    weight += weight_tmp
-                                    smooth_var[ip] += variable[ip_other] * weight_tmp
-                                    hitsNeighbours[ip] += 1
+            if filter_type == 0:
+                for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+                    for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                        for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                            if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                                              tile_x, tile_y, tile_z,
+                                              delta_x, delta_y, delta_z,
+                                              tile_widths, filter_length):
+                                start_index = start_index_for_tile[tile_x,
+                                                                   tile_y, tile_z]
+                                n_particles = particles_per_tile[tile_x,
+                                                                 tile_y, tile_z]
+                                
+        
+                                for ip_other in range(start_index, start_index + n_particles):
+                                    dist = distance((xp, yp, zp), pos[ip_other])
+                                    if dist < filter_length:
+                                        weight_tmp = 1.0 * weights[ip_other]
+                                        weight += weight_tmp
+                                        scratchSmooth += variable[ip_other] * weight_tmp
+                                        numInteractingPartNew += 1
+    
+            elif filter_type == 1:
+                for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+                    for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                        for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                            if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                                              tile_x, tile_y, tile_z,
+                                              delta_x, delta_y, delta_z,
+                                              tile_widths, filter_length):
+                                start_index = start_index_for_tile[tile_x,
+                                                                   tile_y, tile_z]
+                                n_particles = particles_per_tile[tile_x,
+                                                                 tile_y, tile_z]
+        
+                                for ip_other in range(start_index, start_index + n_particles):
+                                    dist = distance((xp, yp, zp), pos[ip_other])
+                                    if dist < filter_length:
+                                        weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
+                                        weight += weight_tmp
+                                        scratchSmooth += variable[ip_other] * weight_tmp
+                                        numInteractingPartNew += 1
+                                        
+            if weight > 0.:
+                scratchSmooth /= weight
 
-        elif filter_type == 1:
-            for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-                for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-                    for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                        if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
-                                          tile_x, tile_y, tile_z,
-                                          delta_x, delta_y, delta_z,
-                                          tile_widths, filter_length):
-                            start_index = start_index_for_tile[tile_x,
-                                                               tile_y, tile_z]
-                            n_particles = particles_per_tile[tile_x,
-                                                             tile_y, tile_z]
-    
-                            for ip_other in range(start_index, start_index + n_particles):
-                                dist = distance(pos[ip], pos[ip_other])
-                                if dist < filter_length:
-                                    weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
-                                    weight += weight_tmp
-                                    smooth_var[ip] += variable[ip_other] * weight_tmp
-                                    hitsNeighbours[ip] += 1
-        if weight > 0.:
-            smooth_var[ip] /= weight
+            ################################
+            # part to check convergence of iterative filter
+            ################################
+            
+            if (iterativeFilter == 0): # no iterative
+                hasIterationConverged = True
+            else: # iterative
+                turbFieldNew = varRegister - scratchSmooth
+                relIncrease =  abs(turbFieldNew - turbFieldOld) / abs(turbFieldOld)
+                # we declare the iteration converged when all the following are satisfied:
+                # 1. the relative increase is less than the tolerance
+                # 2. we have done at least one iteration (so we can compare old and new)
+                # 3. the number of particles at the new iteration has increased
+                # (if the number did not increase this would naturally cause 1. to be true)
+                if (relIncrease <= toleranceParam and numIter > 0 and numInteractingPartNew > numInteractingPartOld):
+                    hasIterationConverged = True
+                    hasConverged[ip] = 1
+                else: # not converged
+                    filter_length += filterIncrease
+                    turbFieldOld = turbFieldNew
+                    numIter += 1
+                    numInteractingPartOld = numInteractingPartNew
+
+            ################################
+            # end of check convergence of iterative filter
+            ################################
+
+        smooth_var[ip] = scratchSmooth
+        hitsNeighbours[ip] = numInteractingPartNew
+        if (iterativeFilter == 1): # iterative
+            filter_lengths_out[ip] = filter_length
+            numIterations[ip] = numIter
+            if not hasIterationConverged:
+                # this is to adjust for the last iteration
+                filter_lengths_out[ip] -= filterIncrease
+                numIterations[ip] -= 1
 
 @cuda.jit(lineinfo=True)
 def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                            particles_per_tile, spacings,
                            variable, weights, nSects, center, rMin, rMax, 
                            _rMin, _rMax, filter_lengths, smooth_var, filter_type, 
-                            hitsNeighbours, isParticleInDomain, typeGrid, power):
+                            hitsNeighbours, isParticleInDomain, typeGrid, power, 
+                           iterativeFilter, hasConverged, numIterations, filter_lengths_out):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -672,6 +825,8 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
     xp = pos[ip, 0]
     yp = pos[ip, 1]
     zp = pos[ip, 2]
+
+    varRegister = variable[ip]
 
     rad2 = (xp - center[0])**2 + \
            (yp - center[1])**2 + \
@@ -694,10 +849,29 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
     if (rad2 > rad2Min) and (rad2 < rad2Max):
         inside_domain = True
 
-    # in theory we can have different filter lengths per particle
-    # for the iterative scheme in Vazza this number is gradually increased
-    # maybe this function needs to be reworked in that case...
-    filter_length = filter_lengths[ip]
+    if (iterativeFilter == 0): # no iterative
+        filter_length = filter_lengths[ip]
+    else: #iterative
+        # iterative scheme ~Vazza+2012
+        # filter length is gradually increased
+        filter_length = 0.1 * filter_lengths[ip]
+        if (0.1 * filter_lengths[ip] < 1.0 * hsml[ip]):
+            filter_length = 1.0 * hsml[ip]
+        # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
+
+    filterIncrease = 0.5*hsml[ip] # it is additive factor (?)
+    max_filter_length = 5.0*filter_lengths[ip]
+    # need to make sure that with max_filter_length it does not go
+    # beyond region loaded on GPU
+
+    hasIterationConverged = False
+
+    turbFieldOld = 0.0
+    turbFieldNew = 0.0
+    toleranceParam = 0.1
+
+    numInteractingPartOld = 0
+    numInteractingPartNew = 0
 
     radSpacing, phiSpacing, theSpacing = spacings
     nSectRad, nSectPhi, nSectThe = nSects
@@ -713,118 +887,169 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
         ip_tile_phi = tile_index[ip, 1]
         ip_tile_the = tile_index[ip, 2]
 
-        weight = 0.0
-        weight_tmp = 0.0
-
         filter_window = 1
         # for gaussian filter the sigma is  1/4 of the
         # filter_length of the source particle
         if filter_type == 1:
             filter_window = 4
 
-        # when the particle is far away from the z axis so that the filter
-        # search radius does not overlap with it
-        if (filter_length < cylRadius):
-            delta_phi = math.asin((filter_length) / cylRadius)
-            # tricky situations: 
-            # 1: when phi - delta_phi < 0 or
-            # 2: phi + delta_phi > 2 \pi
-            # case 1: ip_tile_ip_min is negative (but with the 
-            # appropriate value) and the range( , ) works as intended
-            ip_tile_phi_min = int((phi - delta_phi) // phiSpacing)
-            # case 2: we shift both phi_min and phi_max to the 
-            # interval [-ip_tile_phi_min - numSectPhi (<0), 
-            # ip_tile_phi_max - numSectPhi]
-            # This leads back to case 1.
-            ip_tile_phi_max = int((phi + delta_phi) // phiSpacing)
-            if (phi + delta_phi > 2.0*math.pi):
-                ip_tile_phi_min -= nSectPhi
-                ip_tile_phi_max -= nSectPhi
+        numIter = 0
+        while (filter_length <= max_filter_length and not hasIterationConverged):
+            # the idea is to use this while loop both for iterative and non-iterative case
+            # if non-iterative we exit after one go
+            scratchSmooth = 0.0
+            weight = 0.0
+            weight_tmp = 0.0
+            numInteractingPartNew = 0
 
-            delta_theta = math.asin((filter_length) / rp)
-            # when filter_length < cylRadius
-            # theta +/- delta_theta is always well-behaved
-            ip_tile_the_min = int((theta - delta_theta) // theSpacing)
-            ip_tile_the_max = int((theta + delta_theta) // theSpacing)            
-        # when the particle search radius overlaps with z axis
-        # (cylRadius < filter_length)
-        else:
-            # need to search all the azimuthal sectors
-            ip_tile_phi_min = 0
-            ip_tile_phi_max = nSectPhi - 1
-            # regarding latitudinal range, three cases:
-            # case 1. particle+search radius is entirely in z>0 midplane
-            # case 2. particle+search radius is entirely in z<0 midplane
-            # case 3. particle+search radius overlaps with origin 
-            # for case 3. the latitudinal tiles go from 0 to nSectThe -1
-            ip_tile_the_min = 0
-            ip_tile_the_max = nSectThe - 1
-            if (( zp - center[2] ) > filter_length):
-                # case 1. search latitudinal tiles from 0 to ip_tile_the_max
+            ####################################
+            # code to check what are the tiles that can overlap
+            # with the particle filter_length
+            ####################################
+            
+            # when the particle is far away from the z axis so that the filter
+            # search radius does not overlap with it
+            if (filter_length < cylRadius):
+                delta_phi = math.asin((filter_length) / cylRadius)
+                # tricky situations: 
+                # 1: when phi - delta_phi < 0 or
+                # 2: phi + delta_phi > 2 \pi
+                # case 1: ip_tile_ip_min is negative (but with the 
+                # appropriate value) and the range( , ) works as intended
+                ip_tile_phi_min = int((phi - delta_phi) // phiSpacing)
+                # case 2: we shift both phi_min and phi_max to the 
+                # interval [-ip_tile_phi_min - numSectPhi (<0), 
+                # ip_tile_phi_max - numSectPhi]
+                # This leads back to case 1.
+                ip_tile_phi_max = int((phi + delta_phi) // phiSpacing)
+                if (phi + delta_phi > 2.0*math.pi):
+                    ip_tile_phi_min -= nSectPhi
+                    ip_tile_phi_max -= nSectPhi
+    
                 delta_theta = math.asin((filter_length) / rp)
-                ip_tile_the_max = int((theta + delta_theta) // theSpacing)
-            elif (- (zp - center[2]) > filter_length):
-                delta_theta = math.asin((filter_length) / rp)
+                # when filter_length < cylRadius
+                # theta +/- delta_theta is always well-behaved
                 ip_tile_the_min = int((theta - delta_theta) // theSpacing)
-                # case 2. search latitudinal tiles from ip_tile_the_min
-                # to nSectThe - 1
-            
-        # the radial tile range selection actually is in 
-        # common for both cases 
-        # when filter_length < cylRadius
-        # and when filter_length >= cylRadius
-        # we have two cases: 
-        # case 1. the ball overlaps with the origin
-        # case 2. the ball does not overlap with the origin
-        # both can be covered by the following
-        delta_rad = filter_length
-        ip_tile_rad_min = 0
-        if (rp - delta_rad > _rMin):
-            # ip_tile_rad_min = int((math.log10(rp - delta_rad) - \
+                ip_tile_the_max = int((theta + delta_theta) // theSpacing)            
+            # when the particle search radius overlaps with z axis
+            # (cylRadius < filter_length)
+            else:
+                # need to search all the azimuthal sectors
+                ip_tile_phi_min = 0
+                ip_tile_phi_max = nSectPhi - 1
+                # regarding latitudinal range, three cases:
+                # case 1. particle+search radius is entirely in z>0 midplane
+                # case 2. particle+search radius is entirely in z<0 midplane
+                # case 3. particle+search radius overlaps with origin 
+                # for case 3. the latitudinal tiles go from 0 to nSectThe -1
+                ip_tile_the_min = 0
+                ip_tile_the_max = nSectThe - 1
+                if (( zp - center[2] ) > filter_length):
+                    # case 1. search latitudinal tiles from 0 to ip_tile_the_max
+                    delta_theta = math.asin((filter_length) / rp)
+                    ip_tile_the_max = int((theta + delta_theta) // theSpacing)
+                elif (- (zp - center[2]) > filter_length):
+                    delta_theta = math.asin((filter_length) / rp)
+                    ip_tile_the_min = int((theta - delta_theta) // theSpacing)
+                    # case 2. search latitudinal tiles from ip_tile_the_min
+                    # to nSectThe - 1
+                
+            # the radial tile range selection actually is in 
+            # common for both cases 
+            # when filter_length < cylRadius
+            # and when filter_length >= cylRadius
+            # we have two cases: 
+            # case 1. the ball overlaps with the origin
+            # case 2. the ball does not overlap with the origin
+            # both can be covered by the following
+            delta_rad = filter_length
+            ip_tile_rad_min = 0
+            if (rp - delta_rad > _rMin):
+                # ip_tile_rad_min = int((math.log10(rp - delta_rad) - \
+                #                    math.log10(_rMin) ) // radSpacing)
+                ip_tile_rad_min = find_tile_radial(rp - delta_rad, radSpacing, _rMin, _rMax, typeGrid, power)
+            # ip_tile_rad_max = int((math.log10(rp + delta_rad) - \
             #                    math.log10(_rMin) ) // radSpacing)
-            ip_tile_rad_min = find_tile_radial(rp - delta_rad, radSpacing, _rMin, _rMax, typeGrid, power)
-        # ip_tile_rad_max = int((math.log10(rp + delta_rad) - \
-        #                    math.log10(_rMin) ) // radSpacing)
-        ip_tile_rad_max = find_tile_radial(rp + delta_rad, radSpacing, _rMin, _rMax, typeGrid, power)
+            ip_tile_rad_max = find_tile_radial(rp + delta_rad, radSpacing, _rMin, _rMax, typeGrid, power)
+
+            ####################################
+            # end of code to check overlap
+            ####################################
             
-        
-        if filter_type == 0:
-            for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
-                for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
-                    for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
+            if filter_type == 0:
+                for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
+                    for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
+                        for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
+    
+                            start_index = int(start_index_for_tile[tile_rad,
+                                                               tile_phi, tile_the])
+                            n_particles = int(particles_per_tile[tile_rad,
+                                                               tile_phi, tile_the])
+    
+                            for ip_other in range(start_index, start_index + n_particles):
+                                dist = distance((xp, yp, zp), pos[ip_other])
+                                if dist < filter_length:
+                                    weight_tmp = 1.0 * weights[ip_other]
+                                    weight += weight_tmp
+                                    scratchSmooth += variable[ip_other] * weight_tmp
+                                    numInteractingPartNew += 1
+    
+            elif filter_type == 1:
+                for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
+                    for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
+                        for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
+    
+                            start_index = int(start_index_for_tile[tile_rad,
+                                                               tile_phi, tile_the])
+                            n_particles = int(particles_per_tile[tile_rad,
+                                                               tile_phi, tile_the])
+    
+                            for ip_other in range(start_index, start_index + n_particles):
+                                dist = distance((xp, yp, zp), pos[ip_other])
+                                if dist < filter_length:
+                                    weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
+                                    weight += weight_tmp
+                                    scratchSmooth += variable[ip_other] * weight_tmp
+                                    numInteractingPartNew += 1
+            if weight > 0.:
+                scratchSmooth /= weight
 
-                        start_index = int(start_index_for_tile[tile_rad,
-                                                           tile_phi, tile_the])
-                        n_particles = int(particles_per_tile[tile_rad,
-                                                           tile_phi, tile_the])
+            ################################
+            # part to check convergence of iterative filter
+            ################################
+            
+            if (iterativeFilter == 0): # no iterative
+                hasIterationConverged = True
+            else: # iterative
+                turbFieldNew = varRegister - scratchSmooth
+                relIncrease =  abs(turbFieldNew - turbFieldOld) / abs(turbFieldOld)
+                # we declare the iteration converged when all the following are satisfied:
+                # 1. the relative increase is less than the tolerance
+                # 2. we have done at least one iteration (so we can compare old and new)
+                # 3. the number of particles at the new iteration has increased
+                # (if the number did not increase this would naturally cause 1. to be true)
+                if (relIncrease <= toleranceParam and numIter > 0 and numInteractingPartNew > numInteractingPartOld):
+                    hasIterationConverged = True
+                    hasConverged[ip] = 1
+                else: # not converged
+                    filter_length += filterIncrease
+                    turbFieldOld = turbFieldNew
+                    numIter += 1
+                    numInteractingPartOld = numInteractingPartNew
 
-                        for ip_other in range(start_index, start_index + n_particles):
-                            dist = distance(pos[ip], pos[ip_other])
-                            if dist < filter_length:
-                                weight_tmp = 1.0 * weights[ip_other]
-                                weight += weight_tmp
-                                smooth_var[ip] += variable[ip_other] * weight_tmp
-                                hitsNeighbours[ip] += 1
+            ################################
+            # end of check convergence of iterative filter
+            ################################
 
-        elif filter_type == 1:
-            for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
-                for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
-                    for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
-
-                        start_index = int(start_index_for_tile[tile_rad,
-                                                           tile_phi, tile_the])
-                        n_particles = int(particles_per_tile[tile_rad,
-                                                           tile_phi, tile_the])
-
-                        for ip_other in range(start_index, start_index + n_particles):
-                            dist = distance(pos[ip], pos[ip_other])
-                            if dist < filter_length:
-                                weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
-                                weight += weight_tmp
-                                smooth_var[ip] += variable[ip_other] * weight_tmp
-                                hitsNeighbours[ip] += 1
-        if weight > 0.:
-            smooth_var[ip] /= weight
+        smooth_var[ip] = scratchSmooth
+        hitsNeighbours[ip] = numInteractingPartNew
+        if (iterativeFilter == 1): # iterative
+            filter_lengths_out[ip] = filter_length
+            numIterations[ip] = numIter
+            if not hasIterationConverged:
+                # this is to adjust for the last iteration
+                filter_lengths_out[ip] -= filterIncrease
+                numIterations[ip] -= 1
 
 @cuda.jit(device=True, inline=True)
 def distance(pos, pos_other):
@@ -1098,7 +1323,7 @@ class SmoothingFilter:
                 self.gpu_variables['rMax'] = cp.array(self.rMax)
             self.gpu_variables['center'] = cp.array(self.center)
 
-    def _apply_filter_gpu(self, variable_str, weight, filter_type):
+    def _apply_filter_gpu(self, variable_str, weight, filter_type, iterative):
         pos = self.gpu_variables['pos']
         hsml = self.gpu_variables['hsml']
         tile_index = self.tile.tile_index
@@ -1128,16 +1353,17 @@ class SmoothingFilter:
             filter_type = 0
         elif filter_type == "gaussian":
             filter_type = 1
+
+        iterativeFilter = 0 # not iterative
+        if iterative:
+            iterativeFilter = 1 # iterative
+            
         smooth_var = cp.zeros_like(variable)
         hitsNeighbours = cp.zeros(variable.shape,dtype="int")
         isParticleInDomain = cp.zeros(variable.shape,dtype="int")
-
-        # this is now wrong because filter_lengths includes also that
-        # of the particles in the extra layer (the boundary), for which no
-        # computation is made. 
-        # if cp.max(filter_lengths) > self.extra_layer_thickness_value:
-        #     err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
-        #     raise RuntimeError(err_msg)
+        hasConverged = cp.zeros(variable.shape,dtype="int")
+        numIterations = cp.zeros(variable.shape,dtype="int")
+        filter_lengths_out = cp.zeros(variable.shape,dtype="float")
 
         if weight is not None:
             weights = self.gpu_variables[weight]
@@ -1150,7 +1376,8 @@ class SmoothingFilter:
                                                            particles_per_tile, tile_widths,
                                                            variable, weights, offsets, npixs, center, widths, 
                                                            filter_lengths, smooth_var, filter_type, hitsNeighbours,
-                                                              isParticleInDomain)
+                                                              isParticleInDomain, iterativeFilter, hasConverged, 
+                                                               numIterations, filter_lengths_out)
             nvtx.end_range(rng)
         elif self.spherical:
             rng = nvtx.start_range(message="spherical filter")
@@ -1158,10 +1385,23 @@ class SmoothingFilter:
                                                            particles_per_tile, spacings,
                                                            variable, weights, nSects, center, rMin, rMax, _rMin, _rMax,
                                                            filter_lengths, smooth_var, filter_type, hitsNeighbours,
-                                                           isParticleInDomain, typeGrid, power)
+                                                           isParticleInDomain, typeGrid, power, iterativeFilter,
+                                                           hasConverged, numIterations, filter_lengths_out)
             nvtx.end_range(rng)
+        
         self.hitsNeighbours = hitsNeighbours
+        self.hitsNeighboursUnSorted = hitsNeighbours[self.tile.unsort_index]
         self.isParticleInDomainUnSorted = isParticleInDomain[self.tile.unsort_index]
+        
+        if iterative:
+            self.filter_lengths_out = filter_lengths_out[self.tile.unsort_index]
+            self.hasConvergedUnSorted = hasConverged[self.tile.unsort_index]
+            self.numIterationsUnSorted = numIterations[self.tile.unsort_index]
+            tot_particles_domain = np.sum(self.isParticleInDomainUnSorted)
+            num_part_converg = np.sum(self.hasConvergedUnSorted[self.isParticleInDomainUnSorted>0])
+            percent_converg = num_part_converg/tot_particles_domain
+            print("%.2f percent of particles (%d / %d) has converged"%(percent_converg*100,num_part_converg,tot_particles_domain))
+            
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
     def _send_variable_to_gpu(self, variable, gpu_key='input_variable'):
@@ -1207,6 +1447,12 @@ class SmoothingFilter:
         in "logic" blocks with Nmax particles max (can be less, but not zero)
         and assigned to exactly 1 block of threads with Nmax threads
         """
+
+        if (shared_mem and optimized):
+            raise RuntimeError('shared_mem and optimized are incompatible')
+        if (shared_mem and iterative):
+            raise RuntimeError('shared_mem and iterative are incompatible')
+            
         rng0 = nvtx.start_range(message="do_filter")
         
         variable_str, unit_quantity = self._send_variable_to_gpu(variable)
@@ -1236,13 +1482,10 @@ class SmoothingFilter:
 
         # Do the filtering
         if not shared_mem:
-            if not iterative:
-                if optimized:
-                    smooth_variable = self._apply_filter_gpu_optimized(variable_str, weight, filter_type)
-                else: 
-                    smooth_variable = self._apply_filter_gpu(variable_str, weight, filter_type)
-            else:
-                smooth_variable = self._apply_filter_gpu_iterative(variable_str, weight, filter_type)
+            if optimized:
+                smooth_variable = self._apply_filter_gpu_optimized(variable_str, weight, filter_type, iterative)
+            else: 
+                smooth_variable = self._apply_filter_gpu(variable_str, weight, filter_type, iterative)
         else:
             smooth_variable = self._apply_filter_gpu_shared(variable_str, weight, filter_type, Nmax)
 
@@ -1332,7 +1575,7 @@ class SmoothingFilter:
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
 
-    def _apply_filter_gpu_optimized(self, variable_str, weight, filter_type):
+    def _apply_filter_gpu_optimized(self, variable_str, weight, filter_type, iterative):
         """
         The idea behind this 'optimized' version is to check if the particle
         is in the domain _beforehand_, and then run the filtering kernel 
@@ -1367,6 +1610,10 @@ class SmoothingFilter:
             filter_type = 0
         elif filter_type == "gaussian":
             filter_type = 1
+
+        iterativeFilter = 0 # not iterative
+        if iterative:
+            iterativeFilter = 1 # iterative
         
 
         if cp.max(filter_lengths) > self.extra_layer_thickness_value:
@@ -1389,20 +1636,39 @@ class SmoothingFilter:
         compactify_particles[self.blocks_1d, self.threadsperblock](pos, tile_index,
                                         cumulative_occupancy.flatten(), isParticleInDomain, 
                                         oldIndex)
-
         self.oldIndex = oldIndex
         
         blocks_1d = (numParticlesInDomain + (self.threadsperblock - 1)) // self.threadsperblock
         
         smooth_var = cp.zeros_like(variable)
+        hitsNeighbours = cp.zeros(variable.shape,dtype="int")
+        # isParticleInDomain = cp.zeros(variable.shape,dtype="int")
+        hasConverged = cp.zeros(variable.shape,dtype="int")
+        numIterations = cp.zeros(variable.shape,dtype="int")
+        filter_lengths_out = cp.zeros(variable.shape,dtype="float")
 
-        apply_filter_optimized[blocks_1d, self.threadsperblock](oldIndex, 
-                                                          pos, hsml, tile_index, 
-                                                          start_index_for_tile,
-                                                           particles_per_tile, tile_widths,
+        rng = nvtx.start_range(message="cartesian filter (optimized)")
+        apply_filter_optimized[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, 
+                                                          start_index_for_tile, particles_per_tile, tile_widths,
                                                            variable, weights, offsets, npixs, center, widths, 
-                                                          filter_lengths, smooth_var, filter_type)
+                                                          filter_lengths, smooth_var, filter_type, hitsNeighbours,
+                                                              isParticleInDomain, iterativeFilter, hasConverged, 
+                                                               numIterations, filter_lengths_out)
+        nvtx.end_range(rng)
 
+        self.hitsNeighbours = hitsNeighbours
+        self.hitsNeighboursUnSorted = hitsNeighbours[self.tile.unsort_index]
+        self.isParticleInDomainUnSorted = isParticleInDomain[self.tile.unsort_index]
+        
+        if iterative:
+            self.filter_lengths_out = filter_lengths_out[self.tile.unsort_index]
+            self.hasConvergedUnSorted = hasConverged[self.tile.unsort_index]
+            self.numIterationsUnSorted = numIterations[self.tile.unsort_index]
+            tot_particles_domain = np.sum(self.isParticleInDomainUnSorted)
+            num_part_converg = np.sum(self.hasConvergedUnSorted[self.isParticleInDomainUnSorted>0])
+            percent_converg = num_part_converg/tot_particles_domain
+            print("%.2f percent of particles (%d / %d) has converged"%(percent_converg*100,num_part_converg,tot_particles_domain))
+        
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
     def __del__(self):
