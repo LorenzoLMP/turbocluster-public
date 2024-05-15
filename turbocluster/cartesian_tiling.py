@@ -146,4 +146,15 @@ class CartesianTiling:
         # [id of the tile in the grid it refers to, id of first particle, num of particles it contains]
 
         self.compactGrid = compactGrid
-        
+
+    def release_gpu_memory(self):
+        # TODO: Add deletion of all GPU variables stored in self
+
+        del self.sort_index
+        del self.unsort_index
+        del self.start_index_for_tile
+        del self.particles_per_tile
+        del self.tile_index
+        del self._pos
+
+        # cp._default_memory_pool.free_all_blocks()
