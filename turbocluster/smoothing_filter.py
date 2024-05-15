@@ -620,5 +620,16 @@ class SmoothingFilter:
         """
         Clean up like this? Not sure it is needed...
         """
-        del self.gpu_variables
+        self.release_gpu_memory()
+
+    def release_gpu_memory(self):
+        # TODO: Add deletion of all GPU variables stored in self
+        if hasattr(self, 'gpu_variables'):
+            for key in list(self.gpu_variables):
+                del self.gpu_variables[key]
+            del self.gpu_variables
+        if hasattr(self, 'tile'):
+            self.tile.release_gpu_memory()
+            del self.tile
+
         # cp._default_memory_pool.free_all_blocks()

@@ -208,6 +208,17 @@ class SphericalTiling:
             self.tile_index, self.particles_per_tile,
             self.start_index_for_tile)
 
+    def release_gpu_memory(self):
+        # TODO: Add deletion of all GPU variables stored in self
+
+        del self.sort_index
+        del self.unsort_index
+        del self.start_index_for_tile
+        del self.particles_per_tile
+        del self.tile_index
+        del self._pos
+
+        # cp._default_memory_pool.free_all_blocks()
 
     # def compactify_grid(self, Nmax):
     #     occupancy_arr = ((self.particles_per_tile + (Nmax - 1)) // Nmax).flatten()
