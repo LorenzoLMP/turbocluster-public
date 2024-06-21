@@ -44,7 +44,7 @@ python -c "import paicos; paicos.gpu_init()"
 First follow the installation instructions above, then
 ```
 conda activate paicos-conda
-conda install jupyter ipympl
+conda install jupyter ipympl --yes
 pip install jupyterlab-widgets
 ```
 
