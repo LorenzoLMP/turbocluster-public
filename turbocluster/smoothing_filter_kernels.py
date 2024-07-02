@@ -36,7 +36,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
             # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
             
         filterIncrease = 0.5*hsml[oldIp] # it is additive factor (?)
-        max_filter_length = 5.0*filter_lengths[oldIp] 
+        max_filter_length = 10.0*filter_lengths[oldIp] 
         # need to make sure that with max_filter_length it does not go
         # beyond region loaded on GPU
         
@@ -44,7 +44,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
     
         turbFieldOld = 0.0
         turbFieldNew = 0.0
-        toleranceParam = 0.1
+        toleranceParam = 0.05
     
         numInteractingPartOld = 0
         numInteractingPartNew = 0
@@ -226,7 +226,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
         # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
         
     filterIncrease = 0.5*hsml[ip] # it is additive factor (?)
-    max_filter_length = 5.0*filter_lengths[ip] 
+    max_filter_length = 10.0*filter_lengths[ip] 
     # need to make sure that with max_filter_length it does not go
     # beyond region loaded on GPU
     
@@ -234,7 +234,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
 
     turbFieldOld = 0.0
     turbFieldNew = 0.0
-    toleranceParam = 0.1
+    toleranceParam = 0.05
 
     numInteractingPartOld = 0
     numInteractingPartNew = 0
@@ -444,7 +444,7 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
         # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
 
     filterIncrease = 0.5*hsml[ip] # it is additive factor (?)
-    max_filter_length = 5.0*filter_lengths[ip]
+    max_filter_length = 10.0*filter_lengths[ip]
     # need to make sure that with max_filter_length it does not go
     # beyond region loaded on GPU
 
@@ -452,7 +452,7 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
 
     turbFieldOld = 0.0
     turbFieldNew = 0.0
-    toleranceParam = 0.1
+    toleranceParam = 0.05
 
     numInteractingPartOld = 0
     numInteractingPartNew = 0
