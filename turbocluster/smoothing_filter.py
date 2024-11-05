@@ -616,6 +616,180 @@ class SmoothingFilter:
         
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
+    def filter_vector(self, variable_x, variable_y, variable_z, filter_length, weight=None, 
+                       filter_type="mean", iterative=False,
+                       shared_mem=False, Nmax=64, optimized=False):
+        """
+        shared_mem has been tested only with filter_type="mean"
+        Nmax is the max number of particles per block. Each tile is split
+        in "logic" blocks with Nmax particles max (can be less, but not zero)
+        and assigned to exactly 1 block of threads with Nmax threads
+        """
+
+        if (shared_mem and optimized):
+            raise RuntimeError('shared_mem and optimized are incompatible')
+        if (shared_mem and iterative):
+            raise RuntimeError('shared_mem and iterative are incompatible')
+            
+        rng0 = nvtx.start_range(message="do_filter")
+        
+        variable_x_str, unit_quantity = self._send_variable_to_gpu(variable_x, gpu_key='input_variable_x')
+        variable_y_str, unit_quantity = self._send_variable_to_gpu(variable_y, gpu_key='input_variable_y')
+        variable_z_str, unit_quantity = self._send_variable_to_gpu(variable_z, gpu_key='input_variable_z')
+
+        if weight is not None:
+            if isinstance(weight, str):
+                self._send_variable_to_gpu(weight)
+            else:
+                raise RuntimeError('has to be a string')
+
+        # send filter_length to gpu
+        if isinstance(filter_length, np.ndarray):
+            assert filter_length.shape[0] == self.index.shape[0]
+            if (np.max(filter_length[self.indicesFirstPass]) > self.max_search_radius):
+                raise RuntimeError('The chosen filter length is larger than the \
+                maximum search radius. This would cause searching for cells that \
+                have not been moved to the GPU. To solve this decrease \
+                the filter length or increase the search radius accordingly')
+            self._send_variable_to_gpu(filter_length, gpu_key='filter_lengths')
+        else:
+            if (filter_length > self.max_search_radius):
+                raise RuntimeError('The chosen filter length is larger than the \
+                maximum search radius. This would cause searching for cells that \
+                have not been moved to the GPU. To solve this decrease \
+                the filter length or increase the search radius accordingly')
+            self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length
+
+        # Do the filtering
+        if not shared_mem:
+            if optimized:
+                # if (norm == 1):
+                #     smooth_variable_x, smooth_variable_y, smooth_variable_z  = self._apply_filter_gpu_optimized_vector1(
+                #                                                 variable_x_str, variable_y_str,
+                #                                                variable_z_str, weight, 
+                #                                                filter_type, iterative)
+                # elif (norm == 2):
+                smooth_variable_x, smooth_variable_y, smooth_variable_z  = self._apply_filter_gpu_optimized_vector(
+                                                            variable_x_str, variable_y_str,
+                                                           variable_z_str, weight, 
+                                                           filter_type, iterative)
+        #     else: 
+        #         smooth_variable = self._apply_filter_gpu(variable_str, weight, filter_type, iterative)
+        # else:
+        #     smooth_variable = self._apply_filter_gpu_shared(variable_str, weight, filter_type, Nmax)
+
+        if unit_quantity is not None:
+            smooth_variable_x = smooth_variable_x * unit_quantity
+            smooth_variable_y = smooth_variable_y * unit_quantity
+            smooth_variable_z = smooth_variable_z * unit_quantity
+
+        nvtx.end_range(rng0)
+        
+        return smooth_variable_x, smooth_variable_y, smooth_variable_z
+
+    def _apply_filter_gpu_optimized_vector(self, variable_x_str, variable_y_str, variable_z_str, weight, filter_type, iterative):
+        """
+        The idea behind this 'optimized' version is to check if the particle
+        is in the domain _beforehand_, and then run the filtering kernel 
+        only on those that are in the domain. There is a certain speedup 
+        in doing so (for small-size problems running time can be 1/3)
+        I have also improved the tile searching within the kernel: now only
+        the tiles that *overlap* with the filtering radius of each particle
+        are selected, without wasting time looping over those that do not
+        For now I am adding it as an option to the filter_variable function
+        (optimized=True) to allow a comparison with the baseline 
+        (optimized=False)
+        """
+
+        if self.spherical:
+            raise RuntimeError('optimized filter has only \
+                                been tested with cartesian grids')
+            
+        pos = self.gpu_variables['pos']
+        hsml = self.gpu_variables['hsml']
+        # - self.tile.off_sets[None,:]
+        tile_index = self.tile.tile_index
+        start_index_for_tile = self.tile.start_index_for_tile
+        particles_per_tile = self.tile.particles_per_tile
+        tile_widths = self.tile.tile_widths
+        
+        variable_x = self.gpu_variables[variable_x_str]
+        variable_y = self.gpu_variables[variable_y_str]
+        variable_z = self.gpu_variables[variable_z_str]
+        
+        npixs = self.tile.npixs
+        center = self.gpu_variables['center']
+        widths = self.gpu_variables['widths']
+        offsets = self.tile.off_sets
+        filter_lengths = self.gpu_variables['filter_lengths']
+        if filter_type == "mean":
+            filter_type = 0
+        elif filter_type == "gaussian":
+            filter_type = 1
+
+        iterativeFilter = 0 # not iterative
+        if iterative:
+            iterativeFilter = 1 # iterative
+        
+
+        if cp.max(filter_lengths) > self.extra_layer_thickness_value:
+            err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
+            raise RuntimeError(err_msg)
+
+        if weight is not None:
+            weights = self.gpu_variables[weight]
+        else:
+            weights = cp.ones_like(variable_x)
+
+        isParticleInDomain = cp.zeros(pos.shape[0])
+        
+        check_particle[self.blocks_1d, self.threadsperblock](pos, hsml, center, widths, isParticleInDomain)
+        self.isParticleInDomain = isParticleInDomain
+        cumulative_occupancy = cp.cumsum(isParticleInDomain)
+        numParticlesInDomain = int(cumulative_occupancy[-1])
+        oldIndex = cp.zeros(numParticlesInDomain,dtype=int)
+        
+        compactify_particles[self.blocks_1d, self.threadsperblock](pos, tile_index,
+                                        cumulative_occupancy.flatten(), isParticleInDomain, 
+                                        oldIndex)
+        self.oldIndex = oldIndex
+        
+        blocks_1d = (numParticlesInDomain + (self.threadsperblock - 1)) // self.threadsperblock
+        
+        smooth_var_x = cp.zeros_like(variable_x)
+        smooth_var_y = cp.zeros_like(variable_y)
+        smooth_var_z = cp.zeros_like(variable_z)
+        
+        hitsNeighbours = cp.zeros(variable_x.shape,dtype="int")
+        # isParticleInDomain = cp.zeros(variable.shape,dtype="int")
+        hasConverged = cp.zeros(variable_x.shape,dtype="int")
+        numIterations = cp.zeros(variable_x.shape,dtype="int")
+        filter_lengths_out = cp.zeros(variable_x.shape,dtype="float")
+
+        rng = nvtx.start_range(message="cartesian filter (optimized)")
+        apply_filter_optimized_vector[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, 
+                                                          start_index_for_tile, particles_per_tile, tile_widths,
+                                                           variable_x, variable_y, variable_z, weights, offsets, npixs, center, widths, 
+                                                          filter_lengths, smooth_var_x, smooth_var_y, smooth_var_z, filter_type, hitsNeighbours,
+                                                              isParticleInDomain, iterativeFilter, hasConverged, 
+                                                               numIterations, filter_lengths_out)
+        nvtx.end_range(rng)
+
+        self.hitsNeighbours = hitsNeighbours
+        self.hitsNeighboursUnSorted = hitsNeighbours[self.tile.unsort_index]
+        self.isParticleInDomainUnSorted = isParticleInDomain[self.tile.unsort_index]
+        
+        if iterative:
+            self.filter_lengths_out = filter_lengths_out[self.tile.unsort_index]
+            self.hasConvergedUnSorted = hasConverged[self.tile.unsort_index]
+            self.numIterationsUnSorted = numIterations[self.tile.unsort_index]
+            tot_particles_domain = np.sum(self.isParticleInDomainUnSorted)
+            num_part_converg = np.sum(self.hasConvergedUnSorted[self.isParticleInDomainUnSorted>0])
+            percent_converg = num_part_converg/tot_particles_domain
+            print("%.2f percent of particles (%d / %d) has converged"%(percent_converg*100,num_part_converg,tot_particles_domain))
+        
+        return cp.asnumpy(smooth_var_x[self.tile.unsort_index]), cp.asnumpy(smooth_var_y[self.tile.unsort_index]), cp.asnumpy(smooth_var_z[self.tile.unsort_index]) 
+
     def __del__(self):
         """
         Clean up like this? Not sure it is needed...

@@ -13,7 +13,8 @@ def distance(pos, pos_other):
 @cuda.jit(device=True, inline=True)
 def gaussian_kernel(dist, filter_length):
 
-    weight = math.exp(-0.5*(dist/filter_length)**2)
+    # weight = math.exp(-0.5*(dist/filter_length)**2)
+    weight = math.exp(-0.5*(dist/filter_length)**2)/filter_length**3/(2.0*cp.pi)**(3./2.)
 
     return weight
 
