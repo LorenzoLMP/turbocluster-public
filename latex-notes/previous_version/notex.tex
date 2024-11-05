@@ -1,0 +1,240 @@
+\documentclass[]{article}
+
+\usepackage{siunitx}
+\usepackage{bm}
+\let\vec\bm
+\usepackage{xurl}
+\usepackage{subcaption}
+\usepackage{graphicx}   % Including figure files
+\usepackage{amsmath}   % Advanced maths commands
+\usepackage{amssymb}   % Extra maths symbols
+\usepackage{xcolor}
+%\usepackage{soul}
+\newcommand{\mathcolorbox}[2]{\colorbox{#1}{$\displaystyle #2$}}
+
+%opening
+\title{Multi-scale Filtering}
+\author{Lorenzo M. Perrone, Thomas Berlok, Christoph Pfrommer}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+In this document we present analytical and numerical tests of multi-scale filtering of MHD turbulence, with application to galaxy cluster turbulence.
+\end{abstract}
+
+\section{Analytical Results}
+
+
+\subsection{Scalar field: additive perturbation}
+
+Let us focus in this section on the case of a simple scalar field $\rho$ of the form
+%
+\begin{align}
+	\rho = \rho_0 + \delta \rho,
+\end{align}
+%
+where
+%
+\begin{align}
+	\rho_0 =\frac{\exp \left(-\frac{x^2}{2 \sigma ^2}\right)}{\sqrt{2 \pi } \sigma }
+\end{align}
+%
+is a large-scale gaussian background profile, and
+%
+\begin{align}
+	\delta \rho = a \cos \left(k_1 x\right)
+\end{align}
+%
+is a small-scale, low-amplitude perturbation ($a \ll 1$). When a gaussian filter $ W_l (x)$ (where $l$ is the smoothing scale) is applied to such a scalar field, the smoothed profile $\langle \rho \rangle_l$ is 
+%
+\begin{align}
+	\langle \rho \rangle_l \equiv \rho * W_l = \frac{e^{-\frac{x^2}{2 \left(l^2+\sigma^2\right)}}}{\sqrt{2 \pi}  \sqrt{l^2+\sigma ^2}} + \frac{e^{-\frac{1}{2} k_1^2 l^2} }{\sqrt{2 \pi }} a \cos (k_1 x),
+\end{align}
+%
+(this is easily obtained using the convolution theorem, Eq.\eqref{app:convolution}). The reconstructed fluctuation $\delta \rho_l \equiv \rho - \langle \rho \rangle_l$ is
+%
+\begin{align}
+	\delta \rho_l = \left( \frac{\exp \left(-\frac{x^2}{2 \sigma ^2}\right)}{\sqrt{2 \pi } \sigma } - \frac{e^{-\frac{x^2}{2 \left(l^2+\sigma^2\right)}}}{\sqrt{2 \pi}  \sqrt{l^2+\sigma ^2}} \right) + \left( 1 - \frac{e^{-\frac{1}{2} k_1^2 l^2} }{\sqrt{2 \pi }} \right) a \cos (k_1 x).
+\end{align}
+%
+For $\sigma \gg l \gg k_1^{-1}$ (i.e. the smoothing length is larger than the wavelength of the fluctuation, but smaller than the scale-length of the background profile), $\delta \rho_l \rightarrow \delta \rho$.
+%\textbf{Note that in this limit, the volume integral will yield zero!}
+
+\subsection{Vector field: additive perturbation}
+
+\subsubsection{Oblique wave}
+
+Let us now consider the case of a three-dimensional vector field $\bm B (x,y,z)$  which consists of a uniform component in one direction $\bm y$ and an oblique wave $\bm k = k_x \bm x + k_y \bm y$ in the $x-y$ plane superimposed onto it:
+%
+\begin{align}
+	\bm B (x,y,z) = \begin{pmatrix}
+		B_x \\ B_y \\ B_z
+	\end{pmatrix} = \begin{pmatrix}
+	a \cos \left(k_x x + k_y y\right)  \\ 1 + b \cos \left(k_x x + k_y y\right) \\ 0
+	\end{pmatrix},
+\end{align}
+%
+where $b = -k_x a / k_y$ due to the incompressibility condition.
+Following Hollins2022, we can write down the following relationship between the ``pseudo-energy'' density of the fluctuation ($\mu_l(B,B)$) and the energy density of the smoothed field $\langle \bm B \rangle_l$:
+%
+\begin{align}\label{eq:pseudo_energy}
+	\langle B^2 \rangle_l = \langle \bm B \rangle_l \cdot \langle \bm B \rangle_l + \mu_l(B,B),
+\end{align} 
+%
+where $\langle \bm B \rangle_l = \left(\langle B_x \rangle_l , \langle B_y \rangle_l, \langle B_z \rangle_l \right)^{\text{T}}$. Applying the three-dimensional gaussian filter to $\bm B$ we get:
+%
+\begin{align}
+	\langle \bm B \rangle_l \cdot \langle \bm B \rangle_l =  1 + (a^2 + b^2) e^{- l^2 k^2} \cos^2 (\bm k \cdot \bm x) + \mathcolorbox{red}{2b e^{-\frac{1}{2} l^2 k^2} \cos (\bm k \cdot \bm x)} ,
+\end{align}
+%
+while 
+%
+\begin{align}
+	\langle B^2 \rangle_l = 1 + \frac{(a^2 + b^2)}{2}  \left(e^{-2 l^2 k^2} \cos (2 \bm k \cdot \bm x)+1\right) + \mathcolorbox{red}{2b e^{-\frac{1}{2} l^2 k^2} \cos (\bm k \cdot \bm x)}.
+\end{align}
+%
+Note that the last two terms in the equations above are the same. To compute the ``pseudo-energy'' density of the fluctuations, then, we invert Eq.\eqref{eq:pseudo_energy} and obtain:
+%
+\begin{align}
+	\mu_l(B,B) &= \langle B^2 \rangle_l - \langle \bm B \rangle_l \cdot \langle \bm B \rangle_l  \\
+	&= \frac{(a^2 + b^2)}{2}  - (a^2 + b^2) e^{- l^2 k^2} \cos^2 (\bm k \cdot \bm x) + \\
+	&+ e^{- 2 l^2 k^2} \frac{(a^2 + b^2)}{2}  \cos (2 \bm k \cdot \bm x) .
+\end{align}
+%
+When averaging over the entire volume, it is easy to see that the total ``pseudo-energy'' of the fluctuations will consists of an exponentially suppressed term ($\propto \exp(-k^2 l ^2)$) and a constant $(a^2 + b^2)/2$ which is exactly what we would call a ``naive'' measure of the turbulent energy in the domain.
+If instead we decided to compute $B^2 - \langle B^2 \rangle_l$ as a measure of the turbulent energy, we would find out that after volume integration there would be no surviving term!!
+
+
+\subsubsection{Generic Fourier series}
+
+Let us generalize the previous results to a vector field with arbitrary Fourier expansion
+%
+\begin{align}
+	\bm B (x,y,z) = \begin{pmatrix}
+		B_x \\ B_y \\ B_z
+	\end{pmatrix} = \begin{pmatrix}
+		\sum_i a_i \cos \left( \bm k_i \cdot \bm x  + \alpha_i \right)  \\ \sum_i b_i \cos \left( \bm k_i \cdot \bm x  + \beta_i \right) \\ \sum_i c_i \cos \left( \bm k_i \cdot \bm x  + \gamma_i \right)
+	\end{pmatrix}.
+\end{align}
+%
+The smoothed field $\langle \bm B \rangle_l$ is:
+%
+\begin{align}
+	\langle \bm B \rangle_l = \begin{pmatrix}
+		\langle B_x \rangle_l \\ \langle B_y \rangle_l \\ \langle B_z \rangle_l
+	\end{pmatrix} = \begin{pmatrix}
+		\sum_i a_i e^{-\frac{1}{2} k_i^2 l^2} \cos \left( \bm k_i \cdot \bm x  + \alpha_i \right)  \\ \sum_i b_i e^{-\frac{1}{2} k_i^2 l^2} \cos \left( \bm k_i \cdot \bm x  + \beta_i \right) \\ \sum_i c_i e^{-\frac{1}{2} k_i^2 l^2} \cos \left( \bm k_i \cdot \bm x  + \gamma_i \right)
+	\end{pmatrix},
+\end{align}
+%
+so that its squared norm $\langle \bm B \rangle_l \cdot \langle \bm B \rangle_l$ yields
+%
+\begin{align}
+	&\langle \bm B \rangle_l \cdot \langle \bm B \rangle_l = \sum_i a_i^2 e^{- k_i^2 l^2} \cos^2 \left( \bm k_i \cdot \bm x  + \alpha_i \right) + \nonumber \\
+	+& \mathcolorbox{yellow}{\sum_{i>j} 2 a_i a_j e^{-\frac{1}{2} (k_i^2 + k_j^2) l^2} \cos \left( \bm k_i \cdot \bm x  + \alpha_i \right) \cos \left( \bm k_j \cdot \bm x  + \alpha_j \right)} + \nonumber \\
+	&\sum_i b_i^2 e^{- k_i^2 l^2} \cos^2 \left( \bm k_i \cdot \bm x  + \beta_i \right) + \nonumber \\
+	+&\sum_{i>j} 2 b_i b_j e^{-\frac{1}{2} (k_i^2 + k_j^2) l^2} \cos \left( \bm k_i \cdot \bm x  + \beta_i \right) \cos \left( \bm k_j \cdot \bm x  + \beta_j \right) + \nonumber \\
+	&\sum_i c_i^2 e^{- k_i^2 l^2} \cos^2 \left( \bm k_i \cdot \bm x  + \gamma_i \right) + \nonumber \\
+	+&\sum_{i>j} 2 c_i c_j e^{-\frac{1}{2} (k_i^2 + k_j^2) l^2} \cos \left( \bm k_i \cdot \bm x  + \gamma_i \right) \cos \left( \bm k_j \cdot \bm x  + \gamma_j \right).
+\end{align}
+%
+We compute the smoothed energy $\langle B^2 \rangle_l = \langle B_x^2 + B_y^2 + B_z^2 \rangle_l$ component-wise. For $\langle B_x^2 \rangle_l$ we have:
+%
+\begin{align}
+	\langle B_x^2 \rangle_l &= \langle \sum_i a_i^2 \cos^2 \left( \bm k_i \cdot \bm x  + \alpha_i \right) + \sum_{i>j} 2 a_i a_j \cos \left( \bm k_i \cdot \bm x  + \alpha_i \right) \cos \left( \bm k_j \cdot \bm x  + \alpha_j \right)  \rangle_l = \nonumber \\
+	&= \sum_i \frac{a_i^2}{2} e^{- 2 k_i^2 l^2} \cos \left( 2 \bm k_i \cdot \bm x  + 2 \alpha_i \right) + \sum_i \frac{a_i^2}{2} + \nonumber \\
+	&+ \mathcolorbox{green}{ \sum_{i>j} a_i a_j \left[e^{-\frac{1}{2} (\bm k_i + \bm k_j)^2 l^2} \cos \left( (\bm k_i + \bm k_j )\cdot \bm x  + \alpha_i + \alpha_j \right) + \right.} \nonumber \\ 
+	& \mathcolorbox{green}{ \left.  + e^{-\frac{1}{2} (\bm k_i - \bm k_j)^2 l^2} \cos \left( (\bm k_i - \bm k_j )\cdot \bm x  + \alpha_i - \alpha_j \right)\right]}
+\end{align}
+%
+We rewrite the term $e^{-\frac{1}{2} (\bm k_i + \bm k_j)^2 l^2}$ as $e^{-\frac{1}{2} (k_i^2 + k_j^2) l^2} e^{-(\bm k_i \cdot \bm k_j)l^2}$, and similarly for $e^{-\frac{1}{2} (\bm k_i - \bm k_j)^2 l^2} = e^{-\frac{1}{2} (k_i^2 + k_j^2) l^2} e^{(\bm k_i \cdot \bm k_j)l^2}$. We see that some simplifications occur when subtracting the \colorbox{green}{green} term and the \colorbox{yellow}{yellow} term. We can in fact rewrite the $\cos$ product in the \colorbox{yellow}{yellow} term using the multiplication formulae as:
+%
+\begin{align}
+	&\mathcolorbox{yellow}{\sum_{i>j} 2 a_i a_j e^{-\frac{1}{2} (k_i^2 + k_j^2) l^2} \cos \left( \bm k_i \cdot \bm x  + \alpha_i \right) \cos \left( \bm k_j \cdot \bm x  + \alpha_j \right)} = \nonumber \\
+	&\sum_{i>j} a_i a_j e^{-\frac{1}{2} (k_i^2 + k_j^2) l^2} \left[  \cos \left( (\bm k_i + \bm k_j) \cdot \bm x  + \alpha_i + \alpha_j \right) +  \cos \left( (\bm k_i - \bm k_j) \cdot \bm x  + \alpha_i - \alpha_j \right) \right].
+\end{align}
+%
+Writing the full result of the ``pseudo-energy'' of the fluctuations $\mu_l(B,B) = \langle B^2 \rangle_l - \langle \bm B \rangle_l \cdot \langle \bm B \rangle_l$ is rather cumbersome, but we can immediately see that, for all the $\bm k_i$ such that $l \gg 1/k_i$, the only terms that do not vanish after integrating over the volume are
+%
+\begin{align}
+	\sum_i \frac{a_i^2}{2} \left( 1 - e^{- k_i^2 l^2} \right) + \sum_i \frac{b_i^2}{2} \left( 1 - e^{- k_i^2 l^2} \right) + \sum_i \frac{c_i^2}{2} \left( 1 - e^{- k_i^2 l^2} \right),
+\end{align}
+%
+while for the $\bm k_i, \bm k_j$ such that $l \ll 1/k_i \sim 1/k_j$, the exponentials in the \colorbox{green}{green} and \colorbox{yellow}{yellow} terms are $\approx 1$ and therefore they approximately cancel each other. The remaining terms that do not vanish after volume integration (the constant term and the cosine squared) give:
+%
+\begin{align}
+	\sum_i \frac{a_i^2}{2} \left( 1 - e^{- k_i^2 l^2} \right) \sim \mathcal{O} (k_i^2 l^2)  \approx 0
+\end{align}
+%
+and similarly for the $y,z$ components. When $1/k_i \ll l \ll 1/k_j$, i.e. $\bm k_i$ is small-scale (fluctuation), and $\bm k_j$ is large-scale (bulk). In this case $k_j$ can be neglected in all exponentials and the \colorbox{green}{green} and \colorbox{yellow}{yellow} cross products also approximately cancel each other.
+In conclusion: when a gaussian filter of size $l$ is applied to a generic vector field, only the wavenumbers $1/k_i \ll l$ will contribute to the ``pseudo-energy'' of the fluctuations, the large-scale modes are suppressed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
+\appendix
+
+\section{Some useful Fourier transforms}
+
+The Fourier transform $\hat{\rho}_0$ of a gaussian $\rho_0 (x)$ (unitary convention, using angular frequency $k = 2 \pi / x$)
+%
+\begin{align}
+\rho_0 (x) =\frac{\exp \left(-\frac{x^2}{2 \sigma ^2}\right)}{\sqrt{2 \pi } \sigma }
+\end{align}
+%
+is the following:
+%
+\begin{align}
+	\hat{\rho}_0 (k) = \frac{e^{-\frac{1}{2} k^2 \sigma ^2}}{\sqrt{2 \pi }},
+\end{align}
+%
+and similarly for a gaussian filter $W_l (x)$ with filtering length $l$ (replace $\sigma \rightarrow l$ in the equation above).
+
+
+\section{Convolution theorem}
+
+For two functions $\rho (x)$ and $ W_l (x)$ with Fourier transforms $\hat{\rho}$ and $ \hat{W}_l$  (unitary convention, using angular frequency $k = 2 \pi / x$), the convolution theorem states that:
+
+\begin{align}\label{app:convolution}
+	( \rho * W_l) (x) =  \int_{-\infty}^{\infty} \rho(\tau) W_l(x-\tau)\, d\tau = \sqrt{2 \pi} \mathcal{F}^{-1} \left[ \hat{\rho} \hat{W}_l \right].
+\end{align}
+
+\section{Smoothing of Sin/Cos}
+
+The convolution theorem with a gaussian kernel applied to a generic $\sin$ or $\cos$ function yields:
+%
+\begin{align}
+	\langle \sin(k x + \phi) \rangle_l = e^{-\frac{1}{2} k^2 l^2} \sin (k x + \phi) \\
+	\langle \cos(k x + \phi) \rangle_l = e^{-\frac{1}{2} k^2 l^2} \cos (k x + \phi).
+\end{align}
+%
+For a product of two sines/cosines we can use the multiplication trigonometric formulae:
+%
+\begin{align}
+	&\langle \cos (a+ k_1 x) \cos (b+ k_2 x) \rangle_l = \\
+	&= \frac{1}{2}\langle \cos (a+b+(k_1+k_2) x)+\cos (a-b+(k_1-k_2) x ) \rangle_l = \\
+	&= \frac{1}{2}e^{-\frac{1}{2} (k_1+k_2)^2 l^2} \cos ((k_1+k_2) x + a+b) \\
+	&+ \frac{1}{2}e^{-\frac{1}{2} (k_1-k_2)^2 l^2} \cos ((k_1-k_2) x + a-b)
+\end{align}
+
+
+\end{document}
