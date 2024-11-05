@@ -3,3 +3,6 @@ turbocluster/__pycache__
 examples/.ipynb_checkpoints
 plots/
 *.pdf
+
+# do not ignore latex document 
+!latex-notes/notex.pdf
