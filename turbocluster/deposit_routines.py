@@ -76,7 +76,9 @@ class DepositCartesianGrid:
         self.pos = self.snap["0_Coordinates"]
 
         # Calculate the diameter of the particle
-        self.hsml = 2.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
+        # self.hsml = 2.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
+        # test
+        self.hsml = 4.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
 
         if pa.settings.use_units:
             self.hsml = self.hsml.to(self.pos.unit)
@@ -89,6 +91,8 @@ class DepositCartesianGrid:
             self.support = 1
         elif kernel_type == "TSC":
             self.support = 2
+        elif kernel_type == "PCS":
+            self.support = 3
 
 
         if (regionType == 'cartesian'):
