@@ -343,3 +343,20 @@ class DepositCartesianGrid:
         nvtx.end_range(rng0)
         
         return deposited_variable
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        print("bye")
+        del self.deposited_var
+        del self.scratch
+        del self.gpu_variables
+        del self.index
+        del self.pos
+        del self.hsml
+        del self.snap
+        del self.support
+        del self.off_sets
+        del self.center
+        del self.widths
