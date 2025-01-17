@@ -121,6 +121,8 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                                         weight += weight_tmp
                                         smoothVarRegister += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
+                if weight > 0.:
+                    smoothVarRegister /= weight
         
             elif filter_type == 1:
                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -143,8 +145,32 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                                         smoothVarRegister += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
             
-            if weight > 0.:
-                smoothVarRegister /= weight
+                if weight > 0.:
+                    smoothVarRegister /= weight
+
+            elif filter_type == 2: ## mexican hat filter
+                for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+                    for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                        for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                            if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                                              tile_x, tile_y, tile_z,
+                                              delta_x, delta_y, delta_z,
+                                              tile_widths, filter_length):
+                                start_index = start_index_for_tile[tile_x,
+                                                                   tile_y, tile_z]
+                                n_particles = particles_per_tile[tile_x,
+                                                                 tile_y, tile_z]
+            
+                                for ip_other in range(start_index, start_index + n_particles):
+                                    dist = distance((xp, yp, zp), pos[ip_other])
+                                    if dist < filter_length:
+                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window) * weights[ip_other]
+                                        weight += weight_tmp
+                                        smoothVarRegister += variable[ip_other] * weight_tmp
+                                        numInteractingPartNew += 1
+            
+                # if weight > 0.:
+                #     smoothVarRegister /= weight
 
             ################################
             # part to check convergence of iterative filter
@@ -311,6 +337,10 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                                         smoothVarRegister_y += variable_y[ip_other] * weight_tmp
                                         smoothVarRegister_z += variable_z[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
+                if weight > 0.:
+                    smoothVarRegister_x /= weight
+                    smoothVarRegister_y /= weight
+                    smoothVarRegister_z /= weight
         
             elif filter_type == 1:
                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -335,10 +365,38 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                                         smoothVarRegister_z += variable_z[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
             
-            if weight > 0.:
-                smoothVarRegister_x /= weight
-                smoothVarRegister_y /= weight
-                smoothVarRegister_z /= weight
+                if weight > 0.:
+                    smoothVarRegister_x /= weight
+                    smoothVarRegister_y /= weight
+                    smoothVarRegister_z /= weight
+
+            elif filter_type == 2: ##  mexican-hat filter
+                for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+                    for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                        for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                            if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                                              tile_x, tile_y, tile_z,
+                                              delta_x, delta_y, delta_z,
+                                              tile_widths, filter_length):
+                                start_index = start_index_for_tile[tile_x,
+                                                                   tile_y, tile_z]
+                                n_particles = particles_per_tile[tile_x,
+                                                                 tile_y, tile_z]
+            
+                                for ip_other in range(start_index, start_index + n_particles):
+                                    dist = distance((xp, yp, zp), pos[ip_other])
+                                    if dist < filter_length:
+                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window) * weights[ip_other]
+                                        weight += weight_tmp
+                                        smoothVarRegister_x += variable_x[ip_other] * weight_tmp
+                                        smoothVarRegister_y += variable_y[ip_other] * weight_tmp
+                                        smoothVarRegister_z += variable_z[ip_other] * weight_tmp
+                                        numInteractingPartNew += 1
+            
+                # if weight > 0.:
+                #     smoothVarRegister_x /= weight
+                #     smoothVarRegister_y /= weight
+                #     smoothVarRegister_z /= weight
 
             ################################
             # part to check convergence of iterative filter
@@ -539,6 +597,8 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                                         weight += weight_tmp
                                         scratchSmooth += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
+                if weight > 0.:
+                    scratchSmooth /= weight
     
             elif filter_type == 1:
                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -561,8 +621,32 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                                         scratchSmooth += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
                                         
-            if weight > 0.:
-                scratchSmooth /= weight
+                if weight > 0.:
+                    scratchSmooth /= weight
+
+            elif filter_type == 2: ## for mexican-hat filter
+                for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+                    for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                        for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                            if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+                                              tile_x, tile_y, tile_z,
+                                              delta_x, delta_y, delta_z,
+                                              tile_widths, filter_length):
+                                start_index = start_index_for_tile[tile_x,
+                                                                   tile_y, tile_z]
+                                n_particles = particles_per_tile[tile_x,
+                                                                 tile_y, tile_z]
+        
+                                for ip_other in range(start_index, start_index + n_particles):
+                                    dist = distance((xp, yp, zp), pos[ip_other])
+                                    if dist < filter_length:
+                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window) * weights[ip_other]
+                                        weight += weight_tmp
+                                        scratchSmooth += variable[ip_other] * weight_tmp
+                                        numInteractingPartNew += 1
+                                        
+                # if weight > 0.:
+                #     scratchSmooth /= weight
 
             ################################
             # part to check convergence of iterative filter
@@ -793,6 +877,8 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                                     weight += weight_tmp
                                     scratchSmooth += variable[ip_other] * weight_tmp
                                     numInteractingPartNew += 1
+                if weight > 0.:
+                    scratchSmooth /= weight
     
             elif filter_type == 1:
                 for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
@@ -811,8 +897,28 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                                     weight += weight_tmp
                                     scratchSmooth += variable[ip_other] * weight_tmp
                                     numInteractingPartNew += 1
-            if weight > 0.:
-                scratchSmooth /= weight
+                if weight > 0.:
+                    scratchSmooth /= weight
+
+            elif filter_type == 2: ## for mexican-hat filter
+                for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
+                    for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
+                        for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
+    
+                            start_index = int(start_index_for_tile[tile_rad,
+                                                               tile_phi, tile_the])
+                            n_particles = int(particles_per_tile[tile_rad,
+                                                               tile_phi, tile_the])
+    
+                            for ip_other in range(start_index, start_index + n_particles):
+                                dist = distance((xp, yp, zp), pos[ip_other])
+                                if dist < filter_length:
+                                    weight_tmp = mexican_kernel(dist, filter_length / filter_window) * weights[ip_other]
+                                    weight += weight_tmp
+                                    scratchSmooth += variable[ip_other] * weight_tmp
+                                    numInteractingPartNew += 1
+                # if weight > 0.:
+                #     scratchSmooth /= weight
 
             ################################
             # part to check convergence of iterative filter
@@ -1101,6 +1207,11 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                                     hitsNeighbours[idOwnParticle] += 1
                 
                         cuda.syncthreads()
+        if (threadId < numParticlesOwnBlock):   
+            # weight should never be zero since any particle finds at
+            # least itself
+            if weight > 0:
+                smoothVarRegister /= weight
     
     elif filter_type == 1:
         for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -1150,13 +1261,74 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                                     hitsNeighbours[idOwnParticle] += 1
                 
                         cuda.syncthreads()
+                        
+        if (threadId < numParticlesOwnBlock):   
+            # weight should never be zero since any particle finds at
+            # least itself
+            if weight > 0:
+                smoothVarRegister /= weight
+
+    elif filter_type == 2: ## mexican-hat filter
+        for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+            for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+                for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+                    numNeighParticles = particles_per_tile[tile_x, tile_y,
+                                            tile_z]
+                    startIdNeigh = start_index_for_tile[tile_x, tile_y,
+                                            tile_z]
+                    remainingParticles = numNeighParticles
+                    numIterations = (numNeighParticles + (numThreads - 1)) // numThreads
+                    for iter in range(numIterations):
+                        # copy from neighbour tile
+                        if (threadId < remainingParticles):
+                            idParticle = startIdNeigh + threadId + iter * numThreads
+                            pos_x, pos_y, pos_z =  pos[idParticle]
+                            neighParticleBuf[threadId*5 + 0] = pos_x
+                            neighParticleBuf[threadId*5 + 1] = pos_y
+                            neighParticleBuf[threadId*5 + 2] = pos_z
+                            neighParticleBuf[threadId*5 + 3] = weights[idParticle]
+                            neighParticleBuf[threadId*5 + 4] = variable[idParticle]
+                
+                        cuda.syncthreads()
+                        numParticlesLoaded = numThreads if (remainingParticles >= numThreads) \
+                                            else remainingParticles
+                        remainingParticles -= numThreads
+    
+                        # compute kernel overlap between loaded particles
+                        # and own particles
+                        if (threadId < numParticlesOwnBlock):    
+                            idOwnParticle = startIdxBlock + threadId
+                            ownFilterLength = ownParticle[threadId*7 + 5]
+                            for ip in range(numParticlesLoaded):
+                                ipShifted = (ip + threadId) % numParticlesLoaded
+                                dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+                                                neighParticleBuf[ip*5:ip*5 + 3])
+                                # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+                                #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
+                                if dist < ownFilterLength:
+                                    weight_tmp = mexican_kernel(dist, ownFilterLength / filter_window) \
+                                                * neighParticleBuf[ip*5 + 3]
+                                    # weight_tmp = gaussian_kernel(dist, ownFilterLength / filter_window) \
+                                    #             * neighParticleBuf[ipShifted*5 + 3]
+                                    weight += weight_tmp
+                                    smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
+                                    # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
+                                    hitsNeighbours[idOwnParticle] += 1
+                
+                        cuda.syncthreads()
+                        
+        # if (threadId < numParticlesOwnBlock):   
+        #     # weight should never be zero since any particle finds at
+        #     # least itself
+        #     if weight > 0:
+        #         smoothVarRegister /= weight
 
 
     if (threadId < numParticlesOwnBlock):   
         # weight should never be zero since any particle finds at
         # least itself
-        if weight > 0:
-            smoothVarRegister /= weight
+        # if weight > 0:
+        #     smoothVarRegister /= weight
         
         # now we need to write smoothVarRegister back into 
         # global memory. It could be that this particle (thread)

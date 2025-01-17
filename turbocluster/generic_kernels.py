@@ -19,6 +19,14 @@ def gaussian_kernel(dist, filter_length):
     return weight
 
 @cuda.jit(device=True, inline=True)
+def mexican_kernel(dist, filter_length):
+
+    weight = (3 - (dist/filter_length)**2)
+    weight *= math.exp(-0.5*(dist/filter_length)**2)/filter_length**3/(2.0*cp.pi)**(3./2.)
+
+    return weight
+
+@cuda.jit(device=True, inline=True)
 def check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                    tile_x, tile_y, tile_z,
                    delta_x, delta_y, delta_z,

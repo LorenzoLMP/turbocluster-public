@@ -1,0 +1,2 @@
+/lustre/hpc/astro/lperrone/cluster-turbulence/examples/narrow-pass-filter/example.py:157: RuntimeWarning: divide by zero encountered in power
+  ampl = np.where(K2>0,np.sqrt(K2/K2min)**(0.5*(power_law_exponent-2.)),0.0)

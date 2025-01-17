@@ -457,9 +457,9 @@ class SmoothingFilter:
             filter_type = 0
         elif filter_type == "gaussian":
             filter_type = 1
-        # if filter_type == "gaussian":
-        #     raise RuntimeError('shared_mem has been tested only \
-        #                         with filter_type="mean"')
+        elif filter_type == "mexican-hat":
+            filter_type = 2
+        
         smooth_var = cp.zeros_like(variable)
 
         if cp.max(filter_lengths) > self.extra_layer_thickness_value:
@@ -555,6 +555,8 @@ class SmoothingFilter:
             filter_type = 0
         elif filter_type == "gaussian":
             filter_type = 1
+        elif filter_type == "mexican-hat":
+            filter_type = 2
 
         iterativeFilter = 0 # not iterative
         if iterative:
@@ -726,6 +728,8 @@ class SmoothingFilter:
             filter_type = 0
         elif filter_type == "gaussian":
             filter_type = 1
+        elif filter_type == "mexican-hat":
+            filter_type = 2
 
         iterativeFilter = 0 # not iterative
         if iterative:
