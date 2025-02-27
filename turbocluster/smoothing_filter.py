@@ -408,8 +408,11 @@ class SmoothingFilter:
             else:
                 raise RuntimeError('has to be a string')
 
+        if not hasattr(filter_length, 'unit'):
+            raise RuntimeError('filter_length must have unit')
+
         # send filter_length to gpu
-        if isinstance(filter_length, np.ndarray):
+        if isinstance(filter_length.value, np.ndarray):
             assert filter_length.shape[0] == self.index.shape[0]
             if (np.max(filter_length[self.indicesFirstPass]) > self.max_search_radius):
                 raise RuntimeError('The chosen filter length is larger than the \
@@ -423,7 +426,7 @@ class SmoothingFilter:
                 maximum search radius. This would cause searching for cells that \
                 have not been moved to the GPU. To solve this decrease \
                 the filter length or increase the search radius accordingly')
-            self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length
+            self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length.value
 
         # Do the filtering
         if not shared_mem:

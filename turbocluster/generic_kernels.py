@@ -2,6 +2,8 @@ import cupy as cp
 from numba import cuda
 import math
 
+epsilon = 1e-2 
+
 @cuda.jit(device=True, inline=True)
 def distance(pos, pos_other):
     dist = math.sqrt((pos[0] - pos_other[0])**2 +
@@ -9,6 +11,13 @@ def distance(pos, pos_other):
                      (pos[2] - pos_other[2])**2)
     return dist
 
+@cuda.jit(device=True, inline=True)
+def sphere_kernel(dist, filter_length):
+
+    # weight = math.exp(-0.5*(dist/filter_length)**2)
+    weight = 1./(4.*cp.pi*filter_length**3/3.0)
+
+    return weight
 
 @cuda.jit(device=True, inline=True)
 def gaussian_kernel(dist, filter_length):
@@ -23,6 +32,15 @@ def mexican_kernel(dist, filter_length):
 
     weight = (3 - (dist/filter_length)**2)
     weight *= math.exp(-0.5*(dist/filter_length)**2)/filter_length**3/(2.0*cp.pi)**(3./2.)
+
+    return weight
+
+@cuda.jit(device=True, inline=True)
+def mexican_kernel_2(dist, filter_length):
+
+    weight_1 = gaussian_kernel(dist, filter_length/(1. + epsilon)**0.5 )
+    weight_2 = gaussian_kernel(dist, filter_length*(1. + epsilon)**0.5 )
+    weight = (weight_1 - weight_2)/epsilon
 
     return weight
 

@@ -23,7 +23,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
         yp = pos[oldIp, 1]
         zp = pos[oldIp, 2]
 
-        oldVarRegister = variable[oldIp]
+        VarRegister = variable[oldIp]
 
         if (iterativeFilter == 0): # no iterative
             filter_length = filter_lengths[oldIp]
@@ -62,7 +62,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
         filter_window = 1
         # for gaussian filter the sigma is  1/4 of the
         # filter_length of the source particle
-        if filter_type == 1:
+        if filter_type > 0:
             filter_window = 4
 
         numIter = 0
@@ -71,7 +71,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
             # if non-iterative we exit after one go
             
             smoothVarRegister = 0.0
-            weight = 0.0
+            normalization = 0.0
             weight_tmp = 0.0
             numInteractingPartNew = 0
 
@@ -117,13 +117,18 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_length:
-                                        weight_tmp = 1.0 * weights[ip_other]
-                                        weight += weight_tmp
+                                        # smoothing kernel
+                                        weight_tmp = sphere_kernel(dist, filter_length) 
+                                        # optional weight (e.g. mass, density, ...)
+                                        weight_tmp *= weights[ip_other]
+                                        # volume of voronoi cell
+                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                        # normalization of the integral
+                                        normalization += weight_tmp
                                         smoothVarRegister += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
-                if weight > 0.:
-                    smoothVarRegister /= weight
-        
+                
+            
             elif filter_type == 1:
                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
                     for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
@@ -140,13 +145,16 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_length:
-                                        weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
-                                        weight += weight_tmp
+                                        # smoothing kernel
+                                        weight_tmp = gaussian_kernel(dist, filter_length / filter_window) 
+                                        # optional weight (e.g. mass, density, ...)
+                                        weight_tmp *= weights[ip_other]
+                                        # volume of voronoi cell
+                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                        # normalization of the integral
+                                        normalization += weight_tmp
                                         smoothVarRegister += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
-            
-                if weight > 0.:
-                    smoothVarRegister /= weight
 
             elif filter_type == 2: ## mexican hat filter
                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -164,14 +172,23 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_length:
-                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window) * weights[ip_other]
-                                        weight += weight_tmp
+                                        # smoothing kernel
+                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window) 
+                                        # optional weight (e.g. mass, density, ...)
+                                        weight_tmp *= weights[ip_other]
+                                        # volume of voronoi cell
+                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                        # normalization of the integral
+                                        # for the mexican filter it is a bit different
+                                        # the normalization uses the sphere kernel
+                                        normalization += (weights[ip_other] * 
+                                                          (4./3.)*cp.pi*hsml[ip_other]**3 * 
+                                                          sphere_kernel(dist, filter_length) )
                                         smoothVarRegister += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
             
-                # if weight > 0.:
-                #     smoothVarRegister /= weight
-
+            smoothVarRegister /= normalization
+            
             ################################
             # part to check convergence of iterative filter
             ################################
@@ -179,7 +196,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
             if (iterativeFilter == 0): # no iterative
                 hasIterationConverged = True
             else: # iterative
-                turbFieldNew = oldVarRegister - smoothVarRegister
+                turbFieldNew = VarRegister - smoothVarRegister
                 increase =  math.fabs(turbFieldNew - turbFieldOld) 
                 # we declare the iteration converged when all the following are satisfied:
                 # 1. the relative increase is less than the tolerance
@@ -235,9 +252,9 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
         yp = pos[oldIp, 1]
         zp = pos[oldIp, 2]
 
-        oldVarRegister_x = variable_x[oldIp]
-        oldVarRegister_y = variable_y[oldIp]
-        oldVarRegister_z = variable_z[oldIp]
+        VarRegister_x = variable_x[oldIp]
+        VarRegister_y = variable_y[oldIp]
+        VarRegister_z = variable_z[oldIp]
 
         if (iterativeFilter == 0): # no iterative
             filter_length = filter_lengths[oldIp]
@@ -250,7 +267,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
             # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
             
         filterIncrease = 0.5*hsml[oldIp] # it is additive factor (?)
-        max_filter_length = 20.0*filter_lengths[oldIp] 
+        max_filter_length = 10.0*filter_lengths[oldIp] 
         # need to make sure that with max_filter_length it does not go
         # beyond region loaded on GPU
         
@@ -276,7 +293,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
         filter_window = 1
         # for gaussian filter the sigma is  1/4 of the
         # filter_length of the source particle
-        if filter_type == 1:
+        if filter_type > 0:
             filter_window = 4
 
         numIter = 0
@@ -285,7 +302,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
             # if non-iterative we exit after one go
             
             smoothVarRegister_x, smoothVarRegister_y, smoothVarRegister_z = 0.0, 0.0, 0.0
-            weight = 0.0
+            normalization = 0.0
             weight_tmp = 0.0
             numInteractingPartNew = 0
 
@@ -331,16 +348,20 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_length:
-                                        weight_tmp = 1.0 * weights[ip_other]
-                                        weight += weight_tmp
+
+                                        # smoothing kernel
+                                        weight_tmp = sphere_kernel(dist, filter_length)
+                                        # optional weight (e.g. mass, density, ...)
+                                        weight_tmp *= weights[ip_other]
+                                        # volume of voronoi cell
+                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                        # normalization of the integral
+                                        normalization += weight_tmp
+                                        
                                         smoothVarRegister_x += variable_x[ip_other] * weight_tmp
                                         smoothVarRegister_y += variable_y[ip_other] * weight_tmp
                                         smoothVarRegister_z += variable_z[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
-                if weight > 0.:
-                    smoothVarRegister_x /= weight
-                    smoothVarRegister_y /= weight
-                    smoothVarRegister_z /= weight
         
             elif filter_type == 1:
                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -358,17 +379,20 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_length:
-                                        weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
-                                        weight += weight_tmp
+                                        # smoothing kernel
+                                        weight_tmp = gaussian_kernel(dist, filter_length / filter_window)
+                                        # optional weight (e.g. mass, density, ...)
+                                        weight_tmp *= weights[ip_other]
+                                        # volume of voronoi cell
+                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                        # normalization of the integral
+                                        normalization += weight_tmp
+                                        
                                         smoothVarRegister_x += variable_x[ip_other] * weight_tmp
                                         smoothVarRegister_y += variable_y[ip_other] * weight_tmp
                                         smoothVarRegister_z += variable_z[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
             
-                if weight > 0.:
-                    smoothVarRegister_x /= weight
-                    smoothVarRegister_y /= weight
-                    smoothVarRegister_z /= weight
 
             elif filter_type == 2: ##  mexican-hat filter
                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -386,17 +410,28 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_length:
-                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window) * weights[ip_other]
-                                        weight += weight_tmp
+                                        # smoothing kernel
+                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window)
+                                        # optional weight (e.g. mass, density, ...)
+                                        weight_tmp *= weights[ip_other]
+                                        # volume of voronoi cell
+                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                        # normalization of the integral
+                                        # for the mexican filter it is a bit different
+                                        # the normalization uses the sphere kernel
+                                        normalization += (weights[ip_other] *
+                                                          (4./3.)*cp.pi*hsml[ip_other]**3 *
+                                                          sphere_kernel(dist, filter_length) )
+                            
                                         smoothVarRegister_x += variable_x[ip_other] * weight_tmp
                                         smoothVarRegister_y += variable_y[ip_other] * weight_tmp
                                         smoothVarRegister_z += variable_z[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
             
-                # if weight > 0.:
-                #     smoothVarRegister_x /= weight
-                #     smoothVarRegister_y /= weight
-                #     smoothVarRegister_z /= weight
+
+            smoothVarRegister_x /= normalization
+            smoothVarRegister_y /= normalization
+            smoothVarRegister_z /= normalization
 
             ################################
             # part to check convergence of iterative filter
@@ -405,18 +440,19 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
             if (iterativeFilter == 0): # no iterative
                 hasIterationConverged = True
             else: # iterative
-                turbFieldNew_x = oldVarRegister_x - smoothVarRegister_x
-                turbFieldNew_y = oldVarRegister_y - smoothVarRegister_y
-                turbFieldNew_z = oldVarRegister_z - smoothVarRegister_z
+                turbFieldNew_x = VarRegister_x - smoothVarRegister_x
+                turbFieldNew_y = VarRegister_y - smoothVarRegister_y
+                turbFieldNew_z = VarRegister_z - smoothVarRegister_z
 
                 # here we can decide on what to base the convergence
                 # criterion: e.g., the norm of the fluctuation vector, or the square, etc...
                 # this is the L2 norm convergence
                 norm_Old = math.sqrt(turbFieldOld_x**2 + turbFieldOld_y**2 + turbFieldOld_z**2)
-                relIncrease =  math.sqrt((turbFieldNew_x - turbFieldOld_x)**2 + (turbFieldNew_y - turbFieldOld_y)**2 + \
-                                (turbFieldNew_z - turbFieldOld_z)**2 ) / norm_Old
-                increase =  math.sqrt((turbFieldNew_x - turbFieldOld_x)**2 + (turbFieldNew_y - turbFieldOld_y)**2 + \
-                                (turbFieldNew_z - turbFieldOld_z)**2 )
+                # relIncrease =  math.sqrt((turbFieldNew_x - turbFieldOld_x)**2 + (turbFieldNew_y - turbFieldOld_y)**2 + \
+                                # (turbFieldNew_z - turbFieldOld_z)**2 ) / norm_Old
+                increase =  math.sqrt((turbFieldNew_x - turbFieldOld_x)**2 + \
+                                      (turbFieldNew_y - turbFieldOld_y)**2 + \
+                                      (turbFieldNew_z - turbFieldOld_z)**2 )
                 
                 # we declare the iteration converged when all the following are satisfied:
                 # 1. the relative increase is less than the tolerance
@@ -477,7 +513,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
     yp = pos[ip, 1]
     zp = pos[ip, 2]
 
-    varRegister = variable[ip]
+    VarRegister = variable[ip]
 
     xmin = center[0] - widths[0] / 2 - hsml[ip]
     xmax = center[0] + widths[0] / 2 + hsml[ip]
@@ -540,15 +576,15 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
         filter_window = 1
         # for gaussian filter the sigma is  1/4 of the
         # filter_length of the source particle
-        if filter_type == 1:
+        if filter_type > 0:
             filter_window = 4
 
         numIter = 0
         while (filter_length <= max_filter_length and not hasIterationConverged):
             # the idea is to use this while loop both for iterative and non-iterative case
             # if non-iterative we exit after one go
-            scratchSmooth = 0.0
-            weight = 0.0
+            smoothVarRegister = 0.0
+            normalization = 0.0
             weight_tmp = 0.0
             numInteractingPartNew = 0
 
@@ -593,12 +629,16 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_length:
-                                        weight_tmp = 1.0 * weights[ip_other]
-                                        weight += weight_tmp
-                                        scratchSmooth += variable[ip_other] * weight_tmp
+                                        # smoothing kernel
+                                        weight_tmp = sphere_kernel(dist, filter_length)
+                                        # optional weight (e.g. mass, density, ...)
+                                        weight_tmp *= weights[ip_other]
+                                        # volume of voronoi cell
+                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                        # normalization of the integral
+                                        normalization += weight_tmp
+                                        smoothVarRegister += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
-                if weight > 0.:
-                    scratchSmooth /= weight
     
             elif filter_type == 1:
                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -616,14 +656,18 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_length:
-                                        weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
-                                        weight += weight_tmp
-                                        scratchSmooth += variable[ip_other] * weight_tmp
+                                        # smoothing kernel
+                                        weight_tmp = gaussian_kernel(dist, filter_length / filter_window)
+                                        # optional weight (e.g. mass, density, ...)
+                                        weight_tmp *= weights[ip_other]
+                                        # volume of voronoi cell
+                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                        # normalization of the integral
+                                        normalization += weight_tmp
+                                        smoothVarRegister += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
-                                        
-                if weight > 0.:
-                    scratchSmooth /= weight
 
+            
             elif filter_type == 2: ## for mexican-hat filter
                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
                     for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
@@ -640,13 +684,23 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_length:
-                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window) * weights[ip_other]
-                                        weight += weight_tmp
-                                        scratchSmooth += variable[ip_other] * weight_tmp
+                                        # smoothing kernel
+                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window)
+                                        # optional weight (e.g. mass, density, ...)
+                                        weight_tmp *= weights[ip_other]
+                                        # volume of voronoi cell
+                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                        # normalization of the integral
+                                        # for the mexican filter it is a bit different
+                                        # the normalization uses the sphere kernel
+                                        normalization += (weights[ip_other] *
+                                                          (4./3.)*cp.pi*hsml[ip_other]**3 *
+                                                          sphere_kernel(dist, filter_length) )
+                                        smoothVarRegister += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
                                         
-                # if weight > 0.:
-                #     scratchSmooth /= weight
+
+            smoothVarRegister /= normalization
 
             ################################
             # part to check convergence of iterative filter
@@ -655,16 +709,20 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
             if (iterativeFilter == 0): # no iterative
                 hasIterationConverged = True
             else: # iterative
-                turbFieldNew = varRegister - scratchSmooth
-                relIncrease =  abs(turbFieldNew - turbFieldOld) / abs(turbFieldOld)
+                turbFieldNew = VarRegister - smoothVarRegister
+                increase =  math.fabs(turbFieldNew - turbFieldOld) 
                 # we declare the iteration converged when all the following are satisfied:
                 # 1. the relative increase is less than the tolerance
                 # 2. we have done at least one iteration (so we can compare old and new)
                 # 3. the number of particles at the new iteration has increased
                 # (if the number did not increase this would naturally cause 1. to be true)
-                if (relIncrease <= toleranceParam and numIter > 0 and numInteractingPartNew > numInteractingPartOld):
-                    hasIterationConverged = True
-                    hasConverged[ip] = 1
+                # 4. the number of particles it interacts with is > 8 (2 per dim, arbitrary)
+            
+                if (numIter > 1) and (increase <= toleranceParam * (0.0 + math.fabs(turbFieldOld))):
+                    if (numInteractingPartNew > numInteractingPartOld):
+                        if (numInteractingPartNew > 8):
+                            hasIterationConverged = True
+                            hasConverged[ip] = 1
                 else: # not converged
                     filter_length += filterIncrease
                     turbFieldOld = turbFieldNew
@@ -675,7 +733,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
             # end of check convergence of iterative filter
             ################################
 
-        smooth_var[ip] = scratchSmooth
+        smooth_var[ip] = smoothVarRegister
         hitsNeighbours[ip] = numInteractingPartNew
         if (iterativeFilter == 1): # iterative
             filter_lengths_out[ip] = filter_length
@@ -710,7 +768,7 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
     yp = pos[ip, 1]
     zp = pos[ip, 2]
 
-    varRegister = variable[ip]
+    VarRegister = variable[ip]
 
     rad2 = (xp - center[0])**2 + \
            (yp - center[1])**2 + \
@@ -774,15 +832,15 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
         filter_window = 1
         # for gaussian filter the sigma is  1/4 of the
         # filter_length of the source particle
-        if filter_type == 1:
+        if filter_type > 0:
             filter_window = 4
 
         numIter = 0
         while (filter_length <= max_filter_length and not hasIterationConverged):
             # the idea is to use this while loop both for iterative and non-iterative case
             # if non-iterative we exit after one go
-            scratchSmooth = 0.0
-            weight = 0.0
+            smoothVarRegister = 0.0
+            normalization = 0.0
             weight_tmp = 0.0
             numInteractingPartNew = 0
 
@@ -873,12 +931,17 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                             for ip_other in range(start_index, start_index + n_particles):
                                 dist = distance((xp, yp, zp), pos[ip_other])
                                 if dist < filter_length:
-                                    weight_tmp = 1.0 * weights[ip_other]
-                                    weight += weight_tmp
-                                    scratchSmooth += variable[ip_other] * weight_tmp
+                                    # smoothing kernel
+                                    weight_tmp = sphere_kernel(dist, filter_length)
+                                    # optional weight (e.g. mass, density, ...)
+                                    weight_tmp *= weights[ip_other]
+                                    # volume of voronoi cell
+                                    weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                    # normalization of the integral
+                                    normalization += weight_tmp
+                                    smoothVarRegister += variable[ip_other] * weight_tmp
                                     numInteractingPartNew += 1
-                if weight > 0.:
-                    scratchSmooth /= weight
+                
     
             elif filter_type == 1:
                 for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
@@ -893,12 +956,17 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                             for ip_other in range(start_index, start_index + n_particles):
                                 dist = distance((xp, yp, zp), pos[ip_other])
                                 if dist < filter_length:
-                                    weight_tmp = gaussian_kernel(dist, filter_length / filter_window) * weights[ip_other]
-                                    weight += weight_tmp
-                                    scratchSmooth += variable[ip_other] * weight_tmp
+                                    # smoothing kernel
+                                    weight_tmp = gaussian_kernel(dist, filter_length / filter_window)
+                                    # optional weight (e.g. mass, density, ...)
+                                    weight_tmp *= weights[ip_other]
+                                    # volume of voronoi cell
+                                    weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                    # normalization of the integral
+                                    normalization += weight_tmp
+                                    smoothVarRegister += variable[ip_other] * weight_tmp
                                     numInteractingPartNew += 1
-                if weight > 0.:
-                    scratchSmooth /= weight
+            
 
             elif filter_type == 2: ## for mexican-hat filter
                 for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
@@ -913,12 +981,23 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                             for ip_other in range(start_index, start_index + n_particles):
                                 dist = distance((xp, yp, zp), pos[ip_other])
                                 if dist < filter_length:
-                                    weight_tmp = mexican_kernel(dist, filter_length / filter_window) * weights[ip_other]
-                                    weight += weight_tmp
-                                    scratchSmooth += variable[ip_other] * weight_tmp
+                                    # smoothing kernel
+                                    weight_tmp = mexican_kernel(dist, filter_length / filter_window)
+                                    # optional weight (e.g. mass, density, ...)
+                                    weight_tmp *= weights[ip_other]
+                                    # volume of voronoi cell
+                                    weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+                                    # normalization of the integral
+                                    # for the mexican filter it is a bit different
+                                    # the normalization uses the sphere kernel
+                                    normalization += (weights[ip_other] *
+                                                      (4./3.)*cp.pi*hsml[ip_other]**3 *
+                                                    sphere_kernel(dist, filter_length) )
+                                    smoothVarRegister += variable[ip_other] * weight_tmp
                                     numInteractingPartNew += 1
-                # if weight > 0.:
-                #     scratchSmooth /= weight
+
+
+            smoothVarRegister /= normalization
 
             ################################
             # part to check convergence of iterative filter
@@ -927,16 +1006,20 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
             if (iterativeFilter == 0): # no iterative
                 hasIterationConverged = True
             else: # iterative
-                turbFieldNew = varRegister - scratchSmooth
-                relIncrease =  abs(turbFieldNew - turbFieldOld) / abs(turbFieldOld)
+                turbFieldNew = VarRegister - smoothVarRegister
+                increase =  math.fabs(turbFieldNew - turbFieldOld) 
                 # we declare the iteration converged when all the following are satisfied:
                 # 1. the relative increase is less than the tolerance
                 # 2. we have done at least one iteration (so we can compare old and new)
                 # 3. the number of particles at the new iteration has increased
                 # (if the number did not increase this would naturally cause 1. to be true)
-                if (relIncrease <= toleranceParam and numIter > 0 and numInteractingPartNew > numInteractingPartOld):
-                    hasIterationConverged = True
-                    hasConverged[ip] = 1
+                # 4. the number of particles it interacts with is > 8 (2 per dim, arbitrary)
+                
+                if (numIter > 1) and (increase <= toleranceParam * (0.0 + math.fabs(turbFieldOld))):
+                    if (numInteractingPartNew > numInteractingPartOld):
+                        if (numInteractingPartNew > 8):
+                            hasIterationConverged = True
+                            hasConverged[ip] = 1
                 else: # not converged
                     filter_length += filterIncrease
                     turbFieldOld = turbFieldNew
@@ -947,7 +1030,7 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
             # end of check convergence of iterative filter
             ################################
 
-        smooth_var[ip] = scratchSmooth
+        smooth_var[ip] = smoothVarRegister
         hitsNeighbours[ip] = numInteractingPartNew
         if (iterativeFilter == 1): # iterative
             filter_lengths_out[ip] = filter_length
@@ -1099,7 +1182,7 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
     filter_window = 1
     # for gaussian filter the sigma is  1/4 of the
     # filter_length of the source particle
-    if filter_type == 1:
+    if filter_type > 0:
         filter_window = 4
 
     ip_tile_x_min = ipTile_x - \
@@ -1158,7 +1241,7 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
     # over N to compute the contributions between particles in own block and
     # those neighbouring just copied
 
-    weight = 0.0
+    normalization = 0.0
     smoothVarRegister = 0.0
 
     if filter_type == 0:
@@ -1179,7 +1262,8 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                             neighParticleBuf[threadId*5 + 0] = pos_x
                             neighParticleBuf[threadId*5 + 1] = pos_y
                             neighParticleBuf[threadId*5 + 2] = pos_z
-                            neighParticleBuf[threadId*5 + 3] = weights[idParticle]
+                            neighParticleBuf[threadId*5 + 3] = (weights[idParticle] * 
+                                                                (4./3.)*cp.pi*hsml[idParticle]**3)
                             neighParticleBuf[threadId*5 + 4] = variable[idParticle]
                 
                         cuda.syncthreads()
@@ -1199,19 +1283,19 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                                 # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
                                 #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
                                 if dist < ownFilterLength:
-                                    weight_tmp = 1.0 * neighParticleBuf[ip*5 + 3]
-                                    # weight_tmp = 1.0 * neighParticleBuf[ipShifted*5 + 3]
-                                    weight += weight_tmp
+                                    # smoothing kernel
+                                    weight_tmp = sphere_kernel(dist, ownFilterLength)
+                                    # optional weight (e.g. mass, density, ...) 
+                                    # includes volume of voronoi cell
+                                    weight_tmp *= neighParticleBuf[ip*5 + 3]
+                                    # normalization of the integral
+                                    normalization += weight_tmp
                                     smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
                                     # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
                                     hitsNeighbours[idOwnParticle] += 1
                 
                         cuda.syncthreads()
-        if (threadId < numParticlesOwnBlock):   
-            # weight should never be zero since any particle finds at
-            # least itself
-            if weight > 0:
-                smoothVarRegister /= weight
+        
     
     elif filter_type == 1:
         for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -1231,7 +1315,8 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                             neighParticleBuf[threadId*5 + 0] = pos_x
                             neighParticleBuf[threadId*5 + 1] = pos_y
                             neighParticleBuf[threadId*5 + 2] = pos_z
-                            neighParticleBuf[threadId*5 + 3] = weights[idParticle]
+                            neighParticleBuf[threadId*5 + 3] = (weights[idParticle] * 
+                                                                (4./3.)*cp.pi*hsml[idParticle]**3)
                             neighParticleBuf[threadId*5 + 4] = variable[idParticle]
                 
                         cuda.syncthreads()
@@ -1251,22 +1336,19 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                                 # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
                                 #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
                                 if dist < ownFilterLength:
-                                    weight_tmp = gaussian_kernel(dist, ownFilterLength / filter_window) \
-                                                * neighParticleBuf[ip*5 + 3]
-                                    # weight_tmp = gaussian_kernel(dist, ownFilterLength / filter_window) \
-                                    #             * neighParticleBuf[ipShifted*5 + 3]
-                                    weight += weight_tmp
+                                    # smoothing kernel
+                                    weight_tmp = gaussian_kernel(dist, ownFilterLength / filter_window)
+                                    # optional weight (e.g. mass, density, ...) 
+                                    # includes volume of voronoi cell
+                                    weight_tmp *= neighParticleBuf[ip*5 + 3]
+                                    # normalization of the integral
+                                    normalization += weight_tmp
                                     smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
                                     # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
                                     hitsNeighbours[idOwnParticle] += 1
                 
                         cuda.syncthreads()
                         
-        if (threadId < numParticlesOwnBlock):   
-            # weight should never be zero since any particle finds at
-            # least itself
-            if weight > 0:
-                smoothVarRegister /= weight
 
     elif filter_type == 2: ## mexican-hat filter
         for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
@@ -1286,7 +1368,8 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                             neighParticleBuf[threadId*5 + 0] = pos_x
                             neighParticleBuf[threadId*5 + 1] = pos_y
                             neighParticleBuf[threadId*5 + 2] = pos_z
-                            neighParticleBuf[threadId*5 + 3] = weights[idParticle]
+                            neighParticleBuf[threadId*5 + 3] = (weights[idParticle] * 
+                                                                (4./3.)*cp.pi*hsml[idParticle]**3)
                             neighParticleBuf[threadId*5 + 4] = variable[idParticle]
                 
                         cuda.syncthreads()
@@ -1306,29 +1389,27 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                                 # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
                                 #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
                                 if dist < ownFilterLength:
-                                    weight_tmp = mexican_kernel(dist, ownFilterLength / filter_window) \
-                                                * neighParticleBuf[ip*5 + 3]
-                                    # weight_tmp = gaussian_kernel(dist, ownFilterLength / filter_window) \
-                                    #             * neighParticleBuf[ipShifted*5 + 3]
-                                    weight += weight_tmp
+                                    # smoothing kernel
+                                    weight_tmp = mexican_kernel(dist, ownFilterLength / filter_window)
+                                    # optional weight (e.g. mass, density, ...) 
+                                    # includes volume of voronoi cell
+                                    weight_tmp *= neighParticleBuf[ip*5 + 3]
+                                    # normalization of the integral
+                                    # for the mexican filter it is a bit different
+                                    # the normalization uses the sphere kernel
+                                    normalization += (neighParticleBuf[ip*5 + 3] *
+                                                      sphere_kernel(dist, ownFilterLength) )
                                     smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
                                     # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
                                     hitsNeighbours[idOwnParticle] += 1
                 
                         cuda.syncthreads()
                         
-        # if (threadId < numParticlesOwnBlock):   
-        #     # weight should never be zero since any particle finds at
-        #     # least itself
-        #     if weight > 0:
-        #         smoothVarRegister /= weight
-
-
+        
     if (threadId < numParticlesOwnBlock):   
         # weight should never be zero since any particle finds at
         # least itself
-        # if weight > 0:
-        #     smoothVarRegister /= weight
+        smoothVarRegister /= normalization
         
         # now we need to write smoothVarRegister back into 
         # global memory. It could be that this particle (thread)

@@ -78,7 +78,7 @@ class DepositCartesianGrid:
 
         # Calculate the diameter of the particle
         # self.hsml = 2.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
-        # test
+        # test with twice as large diameter
         self.hsml = 4.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
 
         if pa.settings.use_units:
