@@ -7,7 +7,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                      start_index_for_tile, particles_per_tile, tile_widths,
                      variable, weights, offsets, npixs, center, widths, filter_lengths, 
                      smooth_var, filter_type, hitsNeighbours, isParticleInDomain, 
-                     iterativeFilter, hasConverged, numIterations, filter_lengths_out):
+                     iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -60,10 +60,10 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
         delta_z = zp - offsets[2] - (ip_tile_z + 0.5) * tile_widths[2] 
     
         filter_window = 1
-        # for gaussian filter the sigma is  1/4 of the
-        # filter_length of the source particle
+        # for gaussian filter we go up to 4*sigma 
+        # (sigma = filter_length) distance from the source particle
         if filter_type > 0:
-            filter_window = 4
+            filter_window = multiplier
 
         numIter = 0
         while (filter_length <= max_filter_length and not hasIterationConverged):
@@ -82,19 +82,19 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
 
             
             ip_tile_x_min = ip_tile_x - (- delta_x + \
-                            filter_length + tile_widths[0] / 2) // tile_widths[0] 
+                            filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
             ip_tile_x_max = ip_tile_x + (delta_x +   \
-                            filter_length + tile_widths[0] / 2) // tile_widths[0] 
+                            filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
         
             ip_tile_y_min = ip_tile_y - (- delta_y + \
-                            filter_length + tile_widths[1] / 2) // tile_widths[1] 
+                            filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
             ip_tile_y_max = ip_tile_y + (delta_y +   \
-                            filter_length + tile_widths[1] / 2) // tile_widths[1] 
+                            filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
         
             ip_tile_z_min = ip_tile_z - (- delta_z + \
-                            filter_length + tile_widths[2] / 2) // tile_widths[2] 
+                            filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
             ip_tile_z_max = ip_tile_z + (delta_z +   \
-                            filter_length + tile_widths[2] / 2) // tile_widths[2] 
+                            filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
 
             ####################################
             # end of code to check overlap
@@ -107,7 +107,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                                               tile_x, tile_y, tile_z,
                                               delta_x, delta_y, delta_z,
-                                              tile_widths, filter_length):
+                                              tile_widths, filter_window * filter_length):
     
                                 start_index = start_index_for_tile[tile_x,
                                                                    tile_y, tile_z]
@@ -116,7 +116,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
             
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_length:
+                                    if dist < filter_window * filter_length:
                                         # smoothing kernel
                                         weight_tmp = sphere_kernel(dist, filter_length) 
                                         # optional weight (e.g. mass, density, ...)
@@ -136,7 +136,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                                               tile_x, tile_y, tile_z,
                                               delta_x, delta_y, delta_z,
-                                              tile_widths, filter_length):
+                                              tile_widths, filter_window *  filter_length):
                                 start_index = start_index_for_tile[tile_x,
                                                                    tile_y, tile_z]
                                 n_particles = particles_per_tile[tile_x,
@@ -144,9 +144,9 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
             
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_length:
+                                    if dist < filter_window *  filter_length:
                                         # smoothing kernel
-                                        weight_tmp = gaussian_kernel(dist, filter_length / filter_window) 
+                                        weight_tmp = gaussian_kernel(dist, filter_length) 
                                         # optional weight (e.g. mass, density, ...)
                                         weight_tmp *= weights[ip_other]
                                         # volume of voronoi cell
@@ -163,7 +163,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                                               tile_x, tile_y, tile_z,
                                               delta_x, delta_y, delta_z,
-                                              tile_widths, filter_length):
+                                              tile_widths, filter_window *  filter_length):
                                 start_index = start_index_for_tile[tile_x,
                                                                    tile_y, tile_z]
                                 n_particles = particles_per_tile[tile_x,
@@ -171,9 +171,9 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
             
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_length:
+                                    if dist < filter_window *  filter_length:
                                         # smoothing kernel
-                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window) 
+                                        weight_tmp = mexican_kernel(dist, filter_length) 
                                         # optional weight (e.g. mass, density, ...)
                                         weight_tmp *= weights[ip_other]
                                         # volume of voronoi cell
@@ -183,7 +183,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                                         # the normalization uses the sphere kernel
                                         normalization += (weights[ip_other] * 
                                                           (4./3.)*cp.pi*hsml[ip_other]**3 * 
-                                                          sphere_kernel(dist, filter_length) )
+                                                          sphere_kernel(dist, filter_window *  filter_length) )
                                         smoothVarRegister += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
             
@@ -236,7 +236,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                      start_index_for_tile, particles_per_tile, tile_widths,
                      variable_x, variable_y, variable_z, weights, offsets, npixs, center, widths, filter_lengths, 
                      smooth_var_x, smooth_var_y, smooth_var_z, filter_type, hitsNeighbours, isParticleInDomain, 
-                     iterativeFilter, hasConverged, numIterations, filter_lengths_out):
+                     iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -294,7 +294,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
         # for gaussian filter the sigma is  1/4 of the
         # filter_length of the source particle
         if filter_type > 0:
-            filter_window = 4
+            filter_window = multiplier
 
         numIter = 0
         while (filter_length <= max_filter_length and not hasIterationConverged):
@@ -313,19 +313,19 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
 
             
             ip_tile_x_min = ip_tile_x - (- delta_x + \
-                            filter_length + tile_widths[0] / 2) // tile_widths[0] 
+                            filter_window *  filter_length + tile_widths[0] / 2) // tile_widths[0] 
             ip_tile_x_max = ip_tile_x + (delta_x +   \
-                            filter_length + tile_widths[0] / 2) // tile_widths[0] 
+                            filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
         
             ip_tile_y_min = ip_tile_y - (- delta_y + \
-                            filter_length + tile_widths[1] / 2) // tile_widths[1] 
+                            filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
             ip_tile_y_max = ip_tile_y + (delta_y +   \
-                            filter_length + tile_widths[1] / 2) // tile_widths[1] 
+                            filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
         
             ip_tile_z_min = ip_tile_z - (- delta_z + \
-                            filter_length + tile_widths[2] / 2) // tile_widths[2] 
+                            filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
             ip_tile_z_max = ip_tile_z + (delta_z +   \
-                            filter_length + tile_widths[2] / 2) // tile_widths[2] 
+                            filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
 
             ####################################
             # end of code to check overlap
@@ -338,7 +338,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                                               tile_x, tile_y, tile_z,
                                               delta_x, delta_y, delta_z,
-                                              tile_widths, filter_length):
+                                              tile_widths, filter_window * filter_length):
     
                                 start_index = start_index_for_tile[tile_x,
                                                                    tile_y, tile_z]
@@ -347,7 +347,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
             
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_length:
+                                    if dist < filter_window * filter_length:
 
                                         # smoothing kernel
                                         weight_tmp = sphere_kernel(dist, filter_length)
@@ -370,7 +370,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                                               tile_x, tile_y, tile_z,
                                               delta_x, delta_y, delta_z,
-                                              tile_widths, filter_length):
+                                              tile_widths, filter_window * filter_length):
                                 start_index = start_index_for_tile[tile_x,
                                                                    tile_y, tile_z]
                                 n_particles = particles_per_tile[tile_x,
@@ -378,9 +378,9 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
             
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_length:
+                                    if dist < filter_window * filter_length:
                                         # smoothing kernel
-                                        weight_tmp = gaussian_kernel(dist, filter_length / filter_window)
+                                        weight_tmp = gaussian_kernel(dist, filter_length)
                                         # optional weight (e.g. mass, density, ...)
                                         weight_tmp *= weights[ip_other]
                                         # volume of voronoi cell
@@ -401,7 +401,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                                               tile_x, tile_y, tile_z,
                                               delta_x, delta_y, delta_z,
-                                              tile_widths, filter_length):
+                                              tile_widths, filter_window * filter_length):
                                 start_index = start_index_for_tile[tile_x,
                                                                    tile_y, tile_z]
                                 n_particles = particles_per_tile[tile_x,
@@ -409,9 +409,9 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
             
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_length:
+                                    if dist < filter_window * filter_length:
                                         # smoothing kernel
-                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window)
+                                        weight_tmp = mexican_kernel(dist, filter_length)
                                         # optional weight (e.g. mass, density, ...)
                                         weight_tmp *= weights[ip_other]
                                         # volume of voronoi cell
@@ -421,7 +421,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                                         # the normalization uses the sphere kernel
                                         normalization += (weights[ip_other] *
                                                           (4./3.)*cp.pi*hsml[ip_other]**3 *
-                                                          sphere_kernel(dist, filter_length) )
+                                                          sphere_kernel(dist, filter_window * filter_length) )
                             
                                         smoothVarRegister_x += variable_x[ip_other] * weight_tmp
                                         smoothVarRegister_y += variable_y[ip_other] * weight_tmp
@@ -500,7 +500,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
 def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
                  variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, 
                  filter_type, hitsNeighbours, isParticleInDomain, iterativeFilter, hasConverged, 
-                 numIterations, filter_lengths_out):
+                 numIterations, filter_lengths_out, multiplier):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -577,7 +577,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
         # for gaussian filter the sigma is  1/4 of the
         # filter_length of the source particle
         if filter_type > 0:
-            filter_window = 4
+            filter_window = multiplier
 
         numIter = 0
         while (filter_length <= max_filter_length and not hasIterationConverged):
@@ -594,19 +594,19 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
             ####################################
             
             ip_tile_x_min = ip_tile_x - (- delta_x + \
-                            filter_length + tile_widths[0] / 2) // tile_widths[0] 
+                            filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
             ip_tile_x_max = ip_tile_x + (delta_x +   \
-                            filter_length + tile_widths[0] / 2) // tile_widths[0] 
+                            filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
         
             ip_tile_y_min = ip_tile_y - (- delta_y + \
-                            filter_length + tile_widths[1] / 2) // tile_widths[1] 
+                            filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
             ip_tile_y_max = ip_tile_y + (delta_y +   \
-                            filter_length + tile_widths[1] / 2) // tile_widths[1] 
+                            filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
         
             ip_tile_z_min = ip_tile_z - (- delta_z + \
-                            filter_length + tile_widths[2] / 2) // tile_widths[2] 
+                            filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
             ip_tile_z_max = ip_tile_z + (delta_z +   \
-                            filter_length + tile_widths[2] / 2) // tile_widths[2]
+                            filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2]
 
             ####################################
             # end of code to check overlap
@@ -619,7 +619,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                                               tile_x, tile_y, tile_z,
                                               delta_x, delta_y, delta_z,
-                                              tile_widths, filter_length):
+                                              tile_widths, filter_window * filter_length):
                                 start_index = start_index_for_tile[tile_x,
                                                                    tile_y, tile_z]
                                 n_particles = particles_per_tile[tile_x,
@@ -628,7 +628,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
         
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_length:
+                                    if dist < filter_window * filter_length:
                                         # smoothing kernel
                                         weight_tmp = sphere_kernel(dist, filter_length)
                                         # optional weight (e.g. mass, density, ...)
@@ -647,7 +647,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                                               tile_x, tile_y, tile_z,
                                               delta_x, delta_y, delta_z,
-                                              tile_widths, filter_length):
+                                              tile_widths, filter_window * filter_length):
                                 start_index = start_index_for_tile[tile_x,
                                                                    tile_y, tile_z]
                                 n_particles = particles_per_tile[tile_x,
@@ -655,9 +655,9 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
         
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_length:
+                                    if dist < filter_window * filter_length:
                                         # smoothing kernel
-                                        weight_tmp = gaussian_kernel(dist, filter_length / filter_window)
+                                        weight_tmp = gaussian_kernel(dist, filter_length)
                                         # optional weight (e.g. mass, density, ...)
                                         weight_tmp *= weights[ip_other]
                                         # volume of voronoi cell
@@ -675,7 +675,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                                               tile_x, tile_y, tile_z,
                                               delta_x, delta_y, delta_z,
-                                              tile_widths, filter_length):
+                                              tile_widths, filter_window * filter_length):
                                 start_index = start_index_for_tile[tile_x,
                                                                    tile_y, tile_z]
                                 n_particles = particles_per_tile[tile_x,
@@ -683,9 +683,9 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
         
                                 for ip_other in range(start_index, start_index + n_particles):
                                     dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_length:
+                                    if dist < filter_window * filter_length:
                                         # smoothing kernel
-                                        weight_tmp = mexican_kernel(dist, filter_length / filter_window)
+                                        weight_tmp = mexican_kernel(dist, filter_length)
                                         # optional weight (e.g. mass, density, ...)
                                         weight_tmp *= weights[ip_other]
                                         # volume of voronoi cell
@@ -695,7 +695,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                                         # the normalization uses the sphere kernel
                                         normalization += (weights[ip_other] *
                                                           (4./3.)*cp.pi*hsml[ip_other]**3 *
-                                                          sphere_kernel(dist, filter_length) )
+                                                          sphere_kernel(dist, filter_window * filter_length) )
                                         smoothVarRegister += variable[ip_other] * weight_tmp
                                         numInteractingPartNew += 1
                                         
@@ -749,7 +749,7 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                            variable, weights, nSects, center, rMin, rMax, 
                            _rMin, _rMax, filter_lengths, smooth_var, filter_type, 
                             hitsNeighbours, isParticleInDomain, typeGrid, power, 
-                           iterativeFilter, hasConverged, numIterations, filter_lengths_out):
+                           iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -833,7 +833,7 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
         # for gaussian filter the sigma is  1/4 of the
         # filter_length of the source particle
         if filter_type > 0:
-            filter_window = 4
+            filter_window = multiplier
 
         numIter = 0
         while (filter_length <= max_filter_length and not hasIterationConverged):
@@ -851,8 +851,8 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
             
             # when the particle is far away from the z axis so that the filter
             # search radius does not overlap with it
-            if (filter_length < cylRadius):
-                delta_phi = math.asin((filter_length) / cylRadius)
+            if (filter_window * filter_length < cylRadius):
+                delta_phi = math.asin((filter_window * filter_length) / cylRadius)
                 # tricky situations: 
                 # 1: when phi - delta_phi < 0 or
                 # 2: phi + delta_phi > 2 \pi
@@ -868,13 +868,13 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                     ip_tile_phi_min -= nSectPhi
                     ip_tile_phi_max -= nSectPhi
     
-                delta_theta = math.asin((filter_length) / rp)
-                # when filter_length < cylRadius
+                delta_theta = math.asin((filter_window * filter_length) / rp)
+                # when filter_window * filter_length < cylRadius
                 # theta +/- delta_theta is always well-behaved
                 ip_tile_the_min = int((theta - delta_theta) // theSpacing)
                 ip_tile_the_max = int((theta + delta_theta) // theSpacing)            
             # when the particle search radius overlaps with z axis
-            # (cylRadius < filter_length)
+            # (cylRadius < filter_window * filter_length)
             else:
                 # need to search all the azimuthal sectors
                 ip_tile_phi_min = 0
@@ -886,25 +886,25 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                 # for case 3. the latitudinal tiles go from 0 to nSectThe -1
                 ip_tile_the_min = 0
                 ip_tile_the_max = nSectThe - 1
-                if (( zp - center[2] ) > filter_length):
+                if (( zp - center[2] ) > filter_window * filter_length):
                     # case 1. search latitudinal tiles from 0 to ip_tile_the_max
-                    delta_theta = math.asin((filter_length) / rp)
+                    delta_theta = math.asin((filter_window * filter_length) / rp)
                     ip_tile_the_max = int((theta + delta_theta) // theSpacing)
-                elif (- (zp - center[2]) > filter_length):
-                    delta_theta = math.asin((filter_length) / rp)
+                elif (- (zp - center[2]) > filter_window * filter_length):
+                    delta_theta = math.asin((filter_window * filter_length) / rp)
                     ip_tile_the_min = int((theta - delta_theta) // theSpacing)
                     # case 2. search latitudinal tiles from ip_tile_the_min
                     # to nSectThe - 1
                 
             # the radial tile range selection actually is in 
             # common for both cases 
-            # when filter_length < cylRadius
-            # and when filter_length >= cylRadius
+            # when filter_window * filter_length < cylRadius
+            # and when filter_window * filter_length >= cylRadius
             # we have two cases: 
             # case 1. the ball overlaps with the origin
             # case 2. the ball does not overlap with the origin
             # both can be covered by the following
-            delta_rad = filter_length
+            delta_rad = filter_window * filter_length
             ip_tile_rad_min = 0
             if (rp - delta_rad > _rMin):
                 # ip_tile_rad_min = int((math.log10(rp - delta_rad) - \
@@ -930,7 +930,7 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
     
                             for ip_other in range(start_index, start_index + n_particles):
                                 dist = distance((xp, yp, zp), pos[ip_other])
-                                if dist < filter_length:
+                                if dist < filter_window * filter_length:
                                     # smoothing kernel
                                     weight_tmp = sphere_kernel(dist, filter_length)
                                     # optional weight (e.g. mass, density, ...)
@@ -955,9 +955,9 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
     
                             for ip_other in range(start_index, start_index + n_particles):
                                 dist = distance((xp, yp, zp), pos[ip_other])
-                                if dist < filter_length:
+                                if dist < filter_window * filter_length:
                                     # smoothing kernel
-                                    weight_tmp = gaussian_kernel(dist, filter_length / filter_window)
+                                    weight_tmp = gaussian_kernel(dist, filter_length )
                                     # optional weight (e.g. mass, density, ...)
                                     weight_tmp *= weights[ip_other]
                                     # volume of voronoi cell
@@ -980,9 +980,9 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
     
                             for ip_other in range(start_index, start_index + n_particles):
                                 dist = distance((xp, yp, zp), pos[ip_other])
-                                if dist < filter_length:
+                                if dist < filter_window * filter_length:
                                     # smoothing kernel
-                                    weight_tmp = mexican_kernel(dist, filter_length / filter_window)
+                                    weight_tmp = mexican_kernel(dist, filter_length)
                                     # optional weight (e.g. mass, density, ...)
                                     weight_tmp *= weights[ip_other]
                                     # volume of voronoi cell
@@ -992,7 +992,7 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                                     # the normalization uses the sphere kernel
                                     normalization += (weights[ip_other] *
                                                       (4./3.)*cp.pi*hsml[ip_other]**3 *
-                                                    sphere_kernel(dist, filter_length) )
+                                                    sphere_kernel(dist, filter_window * filter_length) )
                                     smoothVarRegister += variable[ip_other] * weight_tmp
                                     numInteractingPartNew += 1
 
@@ -1127,7 +1127,7 @@ def compactify_in_domain(fullCompactGrid, cumulative_occupancy, isBlockInDomain,
 def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile, 
                         particles_per_tile, tile_widths, variable, weights, center, 
                         widths, npixs, filter_lengths, smooth_var, filter_type, 
-                        hitsNeighbours, isParticleInDomain):
+                        hitsNeighbours, isParticleInDomain, multiplier):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -1174,7 +1174,7 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
     # do some kind of atomic add using all available threads
     if (threadId < numParticlesOwnBlock):
         idParticle = startIdxBlock + threadId
-        cuda.atomic.max(maxFilterLength, 0, filter_lengths[idParticle])
+        cuda.atomic.max(maxFilterLength, 0, multiplier * filter_lengths[idParticle])
 
     cuda.syncthreads()
     maxFilterLength = maxFilterLength.item()
@@ -1183,7 +1183,7 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
     # for gaussian filter the sigma is  1/4 of the
     # filter_length of the source particle
     if filter_type > 0:
-        filter_window = 4
+        filter_window = multiplier
 
     ip_tile_x_min = ipTile_x - \
         int((maxFilterLength) / tile_widths_x + 1)
@@ -1282,7 +1282,7 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                                                 neighParticleBuf[ip*5:ip*5 + 3])
                                 # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
                                 #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
-                                if dist < ownFilterLength:
+                                if dist < filter_window * ownFilterLength:
                                     # smoothing kernel
                                     weight_tmp = sphere_kernel(dist, ownFilterLength)
                                     # optional weight (e.g. mass, density, ...) 
@@ -1335,9 +1335,9 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                                                 neighParticleBuf[ip*5:ip*5 + 3])
                                 # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
                                 #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
-                                if dist < ownFilterLength:
+                                if dist < filter_window * ownFilterLength:
                                     # smoothing kernel
-                                    weight_tmp = gaussian_kernel(dist, ownFilterLength / filter_window)
+                                    weight_tmp = gaussian_kernel(dist, ownFilterLength)
                                     # optional weight (e.g. mass, density, ...) 
                                     # includes volume of voronoi cell
                                     weight_tmp *= neighParticleBuf[ip*5 + 3]
@@ -1388,9 +1388,9 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                                                 neighParticleBuf[ip*5:ip*5 + 3])
                                 # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
                                 #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
-                                if dist < ownFilterLength:
+                                if dist < filter_window * ownFilterLength:
                                     # smoothing kernel
-                                    weight_tmp = mexican_kernel(dist, ownFilterLength / filter_window)
+                                    weight_tmp = mexican_kernel(dist, ownFilterLength)
                                     # optional weight (e.g. mass, density, ...) 
                                     # includes volume of voronoi cell
                                     weight_tmp *= neighParticleBuf[ip*5 + 3]
@@ -1398,7 +1398,7 @@ def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile
                                     # for the mexican filter it is a bit different
                                     # the normalization uses the sphere kernel
                                     normalization += (neighParticleBuf[ip*5 + 3] *
-                                                      sphere_kernel(dist, ownFilterLength) )
+                                                      sphere_kernel(dist, filter_window * ownFilterLength) )
                                     smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
                                     # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
                                     hitsNeighbours[idOwnParticle] += 1

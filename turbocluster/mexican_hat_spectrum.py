@@ -30,7 +30,15 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
 
         
 
-        self.kmin = np.sqrt(2.0)/(self.max_search_radius.value/4.1)
+        # self.kmin = np.sqrt(2.0)/(self.max_search_radius.value/4.1)
+        max_filter_length = np.max(self.widths)/5.
+        if (max_filter_length > self.max_search_radius / self.multiplier):
+            raise RuntimeError('The chosen filter length (x4) is larger than the \
+                maximum search radius. This would cause searching for cells that \
+                have not been moved to the GPU. To solve this decrease \
+                the filter length or increase the search radius accordingly')
+            
+        self.kmin = np.sqrt(2.0)/max_filter_length.value
         self.kmax = 12.*self.kmin
         k_vec = np.logspace(np.log10(self.kmin), np.log10(self.kmax), 12)/self.snap.length
         # this is a volume integral of the variance
@@ -43,8 +51,9 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
 
             if (mask is None):
                 var_filtered, _ = extract_turbulent_scalar(snap, self, 
-                                                          variable, 4.*filt_len, 
+                                                          variable, filt_len, 
                                                           weight, test_type="diff_of_gaussians",
+                                                           filter_type="mexican-hat",
                                                            iterative=False)
                 
                 var_variance[i] = volume_integral(snap, self, var_filtered**2,
@@ -52,7 +61,7 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
             else:
                 ## equation A9 Arevalo+2012
                 G_sigma1_var, _ = extract_turbulent_scalar(snap, self, 
-                                                          variable, 4.*filt_len/np.sqrt(1.0+epsilon), 
+                                                          variable, filt_len/np.sqrt(1.0+epsilon), 
                                                           weight, filter_type="gaussian",
                                                            iterative=False)
                 # note that it does not matter what unit is mask
@@ -62,16 +71,16 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
                 # we use the convention that mask=1=True on the cells which we want
                 # to include, and mask=0=False on the cells to exclude
                 G_sigma1_mask, _ = extract_turbulent_scalar(snap, self, 
-                                                          mask*var_unit, 4.*filt_len/np.sqrt(1.0+epsilon), 
+                                                          mask*var_unit, filt_len/np.sqrt(1.0+epsilon), 
                                                           weight, filter_type="gaussian",
                                                            iterative=False)
 
                 G_sigma2_var, _ = extract_turbulent_scalar(snap, self, 
-                                                          variable, 4.*filt_len*np.sqrt(1.0+epsilon), 
+                                                          variable, filt_len*np.sqrt(1.0+epsilon), 
                                                           weight, filter_type="gaussian",
                                                            iterative=False)
                 G_sigma2_mask, _ = extract_turbulent_scalar(snap, self, 
-                                                          mask*var_unit, 4.*filt_len*np.sqrt(1.0+epsilon), 
+                                                          mask*var_unit, filt_len*np.sqrt(1.0+epsilon), 
                                                           weight, filter_type="gaussian",
                                                            iterative=False)
 

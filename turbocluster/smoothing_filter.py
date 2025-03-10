@@ -113,13 +113,15 @@ class SmoothingFilter:
         if search_radius is None:
             search_radius = 10.0 * self.hsml
 
+        self.multiplier = 4.0
+
         if hasattr(search_radius, 'unit'):
-            self.search_radius = search_radius.copy
+            self.search_radius = 1.1*self.multiplier*search_radius.copy
             assert search_radius.unit == code_length.unit, 'this restriction applies'
         elif pa.settings.use_units:
-            self.search_radius = np.array(search_radius) * code_length
+            self.search_radius = 1.1*self.multiplier*np.array(search_radius) * code_length
         else:
-            self.search_radius = np.array(search_radius)
+            self.search_radius = 1.1*self.multiplier*np.array(search_radius)
 
         # if max_search_radius is None:
         #     max_search_radius = 0.2 * np.max(self.widths)
@@ -322,7 +324,7 @@ class SmoothingFilter:
                                                            variable, weights, offsets, npixs, center, widths, 
                                                            filter_lengths, smooth_var, filter_type, hitsNeighbours,
                                                               isParticleInDomain, iterativeFilter, hasConverged, 
-                                                               numIterations, filter_lengths_out)
+                                                               numIterations, filter_lengths_out, self.multiplier)
             nvtx.end_range(rng)
         elif self.spherical:
             rng = nvtx.start_range(message="spherical filter")
@@ -331,7 +333,7 @@ class SmoothingFilter:
                                                            variable, weights, nSects, center, rMin, rMax, _rMin, _rMax,
                                                            filter_lengths, smooth_var, filter_type, hitsNeighbours,
                                                            isParticleInDomain, typeGrid, power, iterativeFilter,
-                                                           hasConverged, numIterations, filter_lengths_out)
+                                                           hasConverged, numIterations, filter_lengths_out, self.multiplier)
             nvtx.end_range(rng)
         
         self.hitsNeighbours = hitsNeighbours
@@ -414,15 +416,15 @@ class SmoothingFilter:
         # send filter_length to gpu
         if isinstance(filter_length.value, np.ndarray):
             assert filter_length.shape[0] == self.index.shape[0]
-            if (np.max(filter_length[self.indicesFirstPass]) > self.max_search_radius):
-                raise RuntimeError('The chosen filter length is larger than the \
+            if (self.multiplier*np.max(filter_length[self.indicesFirstPass]) > self.max_search_radius):
+                raise RuntimeError('The chosen filter length (x4) is larger than the \
                 maximum search radius. This would cause searching for cells that \
                 have not been moved to the GPU. To solve this decrease \
                 the filter length or increase the search radius accordingly')
             self._send_variable_to_gpu(filter_length, gpu_key='filter_lengths')
         else:
-            if (filter_length > self.max_search_radius):
-                raise RuntimeError('The chosen filter length is larger than the \
+            if (self.multiplier*filter_length > self.max_search_radius):
+                raise RuntimeError('The chosen filter length (x4) is larger than the \
                 maximum search radius. This would cause searching for cells that \
                 have not been moved to the GPU. To solve this decrease \
                 the filter length or increase the search radius accordingly')
@@ -515,7 +517,7 @@ class SmoothingFilter:
                                                      start_index_for_tile, particles_per_tile, 
                                                      tile_widths, variable, weights, center, 
                                                      widths, npixs, filter_lengths, smooth_var, filter_type,
-                                                                     hitsNeighbours, isParticleInDomain)
+                                                                     hitsNeighbours, isParticleInDomain, self.multiplier)
         nvtx.end_range(rng)
 
         self.hitsNeighbours = hitsNeighbours
@@ -603,7 +605,7 @@ class SmoothingFilter:
                                                            variable, weights, offsets, npixs, center, widths, 
                                                           filter_lengths, smooth_var, filter_type, hitsNeighbours,
                                                               isParticleInDomain, iterativeFilter, hasConverged, 
-                                                               numIterations, filter_lengths_out)
+                                                               numIterations, filter_lengths_out, self.multiplier)
         nvtx.end_range(rng)
 
         self.hitsNeighbours = hitsNeighbours
@@ -651,15 +653,15 @@ class SmoothingFilter:
         # send filter_length to gpu
         if isinstance(filter_length, np.ndarray):
             assert filter_length.shape[0] == self.index.shape[0]
-            if (np.max(filter_length[self.indicesFirstPass]) > self.max_search_radius):
-                raise RuntimeError('The chosen filter length is larger than the \
+            if (np.max(self.multiplier*filter_length[self.indicesFirstPass]) > self.max_search_radius):
+                raise RuntimeError('The chosen filter length (x4) is larger than the \
                 maximum search radius. This would cause searching for cells that \
                 have not been moved to the GPU. To solve this decrease \
                 the filter length or increase the search radius accordingly')
             self._send_variable_to_gpu(filter_length, gpu_key='filter_lengths')
         else:
-            if (filter_length > self.max_search_radius):
-                raise RuntimeError('The chosen filter length is larger than the \
+            if (self.multiplier*filter_length > self.max_search_radius):
+                raise RuntimeError('The chosen filter length (x4) is larger than the \
                 maximum search radius. This would cause searching for cells that \
                 have not been moved to the GPU. To solve this decrease \
                 the filter length or increase the search radius accordingly')
@@ -779,7 +781,7 @@ class SmoothingFilter:
                                                            variable_x, variable_y, variable_z, weights, offsets, npixs, center, widths, 
                                                           filter_lengths, smooth_var_x, smooth_var_y, smooth_var_z, filter_type, hitsNeighbours,
                                                               isParticleInDomain, iterativeFilter, hasConverged, 
-                                                               numIterations, filter_lengths_out)
+                                                               numIterations, filter_lengths_out, self.multiplier)
         nvtx.end_range(rng)
 
         self.hitsNeighbours = hitsNeighbours
