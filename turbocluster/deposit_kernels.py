@@ -104,7 +104,7 @@ def weight_psc(xg, xi, h, Deltax):
  
     return weight 
 
-@cuda.jit(lineinfo=True)
+@cuda.jit()
 def deposit_on_grid(pos, hsml, tile_widths,
                  variable, weights, offsets, npixs, center, widths, deposited_var, 
                  scratch, kernel_type):

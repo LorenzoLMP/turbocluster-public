@@ -31,7 +31,7 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
         
 
         # self.kmin = np.sqrt(2.0)/(self.max_search_radius.value/4.1)
-        max_filter_length = np.max(self.widths)/5.
+        max_filter_length = np.max(self.widths)/7.
         if (max_filter_length > self.max_search_radius / self.multiplier):
             raise RuntimeError('The chosen filter length (x4) is larger than the \
                 maximum search radius. This would cause searching for cells that \
@@ -39,8 +39,8 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
                 the filter length or increase the search radius accordingly')
             
         self.kmin = np.sqrt(2.0)/max_filter_length.value
-        self.kmax = 12.*self.kmin
-        k_vec = np.logspace(np.log10(self.kmin), np.log10(self.kmax), 12)/self.snap.length
+        self.kmax = 15.*self.kmin
+        k_vec = np.logspace(np.log10(self.kmin), np.log10(self.kmax), 15)/self.snap.length
         # this is a volume integral of the variance
         var_variance = np.zeros(k_vec.shape)*var_unit**2*self.snap.length**3 
         

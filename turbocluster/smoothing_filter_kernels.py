@@ -2,7 +2,7 @@ import cupy as cp
 from numba import cuda
 from .generic_kernels import *
 
-@cuda.jit(lineinfo=True)
+@cuda.jit()
 def apply_filter_optimized(oldIndex, pos, hsml, tile_index, 
                      start_index_for_tile, particles_per_tile, tile_widths,
                      variable, weights, offsets, npixs, center, widths, filter_lengths, 
@@ -231,7 +231,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                 numIterations[oldIp] -= 1
                 
 
-@cuda.jit(lineinfo=True)
+@cuda.jit()
 def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index, 
                      start_index_for_tile, particles_per_tile, tile_widths,
                      variable_x, variable_y, variable_z, weights, offsets, npixs, center, widths, filter_lengths, 
@@ -496,7 +496,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                 
             
 
-@cuda.jit(lineinfo=True)
+@cuda.jit()
 def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
                  variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, 
                  filter_type, hitsNeighbours, isParticleInDomain, iterativeFilter, hasConverged, 
@@ -743,7 +743,7 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
                 filter_lengths_out[ip] -= filterIncrease
                 numIterations[ip] -= 1
 
-@cuda.jit(lineinfo=True)
+@cuda.jit()
 def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                            particles_per_tile, spacings,
                            variable, weights, nSects, center, rMin, rMax, 
@@ -1123,7 +1123,7 @@ def compactify_in_domain(fullCompactGrid, cumulative_occupancy, isBlockInDomain,
         
 
 
-@cuda.jit(lineinfo=True)
+@cuda.jit()
 def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile, 
                         particles_per_tile, tile_widths, variable, weights, center, 
                         widths, npixs, filter_lengths, smooth_var, filter_type, 
