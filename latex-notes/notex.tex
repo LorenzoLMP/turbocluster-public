@@ -19,7 +19,7 @@
 
 %opening
 \title{Multi-scale Filtering}
-\author{Lorenzo M. Perrone, Thomas Berlok, Ewald Puchwein, Christoph Pfrommer}
+\author{Lorenzo M. Perrone, Thomas Berlok, EP, CP}
 
 \begin{document}
 
@@ -28,6 +28,158 @@
 \begin{abstract}
 In this document we present analytical and numerical tests of multi-scale filtering of MHD turbulence, with application to galaxy cluster turbulence.
 \end{abstract}
+
+
+\section{Averaging and Filtering Operators}
+
+\subsection{Definitions}
+
+A physical field $f(\bm x)$ can be decomposed into a superposition of its mean ($\langle f \rangle$) and fluctuating ($\delta f = f - \langle f \rangle$) components, where the averaging operator $\langle \ldots \rangle$ can be variously interpreted as an ensamble averaging, spatial- or time- averaging. If such an operator is linear and satisfies the following property
+%
+\begin{align}
+%	\langle f + g \rangle = \langle f \rangle + \langle g \rangle,
+	\langle f \langle g \rangle \rangle = \langle f \rangle \langle g \rangle,
+\end{align}
+%
+then it is called a \textit{Reynolds} operator. Examples of Reynolds operators are volume- and time- averages. Such operators are mathematically interesting, e.g. in fluid dynamics, because they allow to write simple equations for the statistical moments of the fluctuating fields. A more general class of averaging operators, that however does not satisfy the Reynolds rules, are the filtering operators defined by a smoothing kernel $\mathcal{K}_l$ of smoothing length $l$. For example, the application of a filter in space can be written as
+%
+\begin{align}
+	\langle f (\bm x) \rangle_l = \int f(\bm x') \mathcal{K}_l (\bm x - \bm x') \mathrm{d} \bm x',
+\end{align}
+%
+which is equivalent to the convolution between $f$ and $\mathcal{K}_l$. The filtering kernel is normalized and symmetric:
+%
+\begin{align}
+	\int \mathcal{K}_l (\bm x') \mathrm{d} \bm x' = 1, \hspace{2em} \int \bm x' \mathcal{K}_l (\bm x') \mathrm{d} \bm x' = 0,
+\end{align}
+%
+as well as positive definite (there are exceptions).
+
+\subsubsection*{Commutativity between averaging operators}
+
+It can be shown that the volume-averaging and the filtering operators commute. In fact, for a field $f(\bm x)$:
+%
+\begin{align}
+	\langle \langle f \rangle_l \rangle_V &= \frac{1}{V} \int \langle f \rangle_l (\bm x) \mathrm{d} \bm x = \frac{1}{V} \int \left[ \int f(\bm x') \mathcal{K}_l (\bm x - \bm x') \mathrm{d} \bm x' \right] \mathrm{d} \bm x \nonumber \\
+	&= \frac{1}{V} \int f(\bm x') \left[ \int  \mathcal{K}_l (\bm x - \bm x') \mathrm{d} \bm x  \right] \mathrm{d} \bm x' = \frac{1}{V} \int f(\bm x')  \mathrm{d} \bm x' \nonumber \\
+	&= \langle f  \rangle_V = \langle \langle f \rangle_V \rangle_l.
+\end{align}
+%
+An important corollary of this property is that, for a decomposition of $f(\bm x) = \langle f \rangle_l (\bm x) + \delta f_l (\bm x)$ the volume average of the fluctuating part $\delta f_l (\bm x)$ is \textbf{identically} zero:
+%
+\begin{align}\label{eq:corollary_naive_energy}
+	 \frac{1}{V} \int \delta f_l (\bm x) \mathrm{d} \bm x &= \langle \delta f_l  \rangle_V = \langle f  \rangle_V - \langle \langle f \rangle_l  \rangle_V  \nonumber \\
+	 &= \langle f  \rangle_V - \langle f  \rangle_V = 0.
+\end{align}
+%
+As a result, if one were to use a filtering operator to define the turbulent kinetic or magnetic energy in a \textit{na\"{i}ve} way as follows:
+%
+\begin{align}
+	e_{\text{B,turb}} = \frac{1}{8\pi}B^2 - \frac{1}{8\pi} \langle B^2 \rangle_l ,
+\end{align}
+%
+volume-averaging would lead to $\langle e_{\text{B,turb}} \rangle_V = 0$.
+
+\subsection{Decomposition of the energy}
+
+In addition to the corollary in Eq.~\eqref{eq:corollary_naive_energy}, the lack of Reynolds rules for filtering operators introduces several other complications in the computation of the ``energy'' of a field (for example, a velocity or magnetic field). To clarify the issue let us consider first the case of simple volume averaging $\langle \ldots \rangle_V$ of a generic scalar field $f$
+%
+\begin{align}
+	\langle f \rangle_V = \frac{1}{V} \int f(\bm x') \mathrm{d} \bm x',
+\end{align}
+%
+with its energy density $e_f = f^2 (\bm x)$ given by:
+%
+\begin{align}
+	e_f = f^2 (\bm x) = \left[\langle f \rangle_V + \delta f(\bm x) \right]^2 = \langle f \rangle_V ^2 + 2 \langle f \rangle_V \delta f(\bm x) +  \delta f(\bm x)^2.
+\end{align}
+%
+As the volume-averaging operator satisfies the Reynolds rules, the total ``energy'' $\mathcal{E}_f$ of the field will then be
+%
+\begin{align}
+	\mathcal{E}_f &= \int e_f \mathrm{d} \bm x = \int \langle f \rangle_V^2 \mathrm{d} \bm x + \int \delta f(\bm x)^2 \mathrm{d} \bm x \nonumber \\
+	&= \mathcal{E}_{\langle f \rangle} + \mathcal{E}_{\delta f},
+\end{align}
+%
+where 
+%
+\begin{align}
+	\mathcal{E}_{\phi} = \int e_\phi \mathrm{d} \bm x,
+\end{align}
+%
+for any field $\phi$. This simple decomposition ceases to hold true for the general filtering operator, since the integral of the cross-product term does not vanish in general:
+%
+\begin{align}
+	\mathcal{E}_f &= \int e_f \mathrm{d} \bm x \nonumber \\
+	&= 	\mathcal{E}_{\langle f \rangle_l} + \int 2 \langle f \rangle_l (\bm x) \delta f(\bm x) \mathrm{d} \bm x + \mathcal{E}_{\delta f}.
+\end{align}
+%
+However, when using a filtering operator, a different set of energies can be defined that sum up meaningfully. The form of these relations depends on whether we are considering the magnetic or kinetic energy, since they involve second- or third-order correlations, respectively.
+
+\subsubsection{Magnetic energy}
+
+For the magnetic energy, its energy density 
+%
+\begin{align}
+	e_B = \frac{\bm B^2}{8\pi}
+\end{align}
+%
+can be split as follows:
+%
+\begin{align}
+	\langle e_B \rangle_l = e_{m} + e_b,
+\end{align}
+%
+where $e_{\langle B \rangle_l}$ is the energy of the \textit{smoothed} magnetic field and $e_b$ is the ``pseudo-energy'' of the magnetic fluctuations:
+%
+\begin{align}
+	e_{m} = \frac{\langle \bm B \rangle_l \bcdot \langle \bm B \rangle_l}{8\pi}, \hspace{2em} e_b = \frac{\mu(\bm B, \bm B)}{8\pi},
+\end{align}
+%
+where $\mu(B_i, B_j) = \langle B_i B_j \rangle_l - \langle B_i \rangle_l \langle B_j \rangle_l$ is the second statistical moment. Note that $e_b \neq |\delta \bm B|^2 / 8\pi$, which corresponds to an intuitive notion of the energy contained in the turbulent fluctuating field. However, as we show in Section~X, the use of $e_b$ as a proxy for the energy contained in the small scales is physically appropriate. 
+
+
+\subsubsection{Kinetic energy}
+
+In the case of the kinetic energy, its energy density 
+%
+\begin{align}
+	e_K = \frac{1}{2} \rho \bm u^2
+\end{align}
+%
+satisfies the following relationship:
+%
+\begin{align}
+	\langle e_K \rangle_l = e_{s} + e_{st} + e_t,
+\end{align}
+%
+where
+%
+\begin{align}
+	e_s = \frac{1}{2} \langle \rho \rangle_l  \langle \bm u \rangle_l \bcdot \langle \bm u \rangle_l
+\end{align}
+%
+is the energy density of the mean flow,
+%
+\begin{align}
+	e_{st} =  \langle \bm u \rangle_l \bcdot \mu (\rho, \bm u)
+\end{align}
+%
+with 
+%
+\begin{align}
+	\mu(\rho, \bm u) = \langle \rho \bm u \rangle_l - \langle \rho \rangle_l  \langle \bm u \rangle_l
+\end{align}
+%
+is the transport of the turbulent momentum by the mean flow, and 
+%
+\begin{align}
+%	e_t = \langle e_K \rangle_l - e_s - e_{st}
+	e_t = \frac{1}{2} \langle \rho \rangle_l \mu(u_i, u_i) + \frac{1}{2} \mu(\rho, u_i, u_i),
+\end{align}
+%
+(summation over repeated indices) is the energy density of the fluctuations.
+
 
 \section{Analytical Results}
 
@@ -66,6 +218,59 @@ is a small-scale, low-amplitude perturbation ($a \ll 1$). When a gaussian filter
 %
 For $\sigma \gg l \gg k_1^{-1}$ (i.e. the smoothing length is larger than the wavelength of the fluctuation, but smaller than the scale-length of the background profile), $\delta \rho_l \rightarrow \delta \rho$.
 %\textbf{Note that in this limit, the volume integral will yield zero!}
+
+\subsubsection{Generic Fourier series}
+
+Let us generalize the previous results to a real scalar field with arbitrary Fourier expansion
+%
+\begin{align}
+	\rho (x,y,z) = \sum_{\bm k} a_{\bm k} e^{i \bm k \bcdot\bm x }  ,
+\end{align}
+%
+where the wavevector $\bm k = 2 \pi \left(n_x/L_x, n_y/L_y, n_z/L_z \right)^\mathrm{T}$, and $\left(n_x, n_y, n_z \right) \in \mathbb{Z}^3$, while the coefficients $a_{\bm k}$ are complex Hermitian ($a_{-\bm k} = a_{\bm k}^*$). 
+The smoothed density field $\langle \rho \rangle_l$ is (see Appendix~\ref{app:smoothing_exp}):
+%
+\begin{align}
+	\langle \rho \rangle_l = \sum_{\bm k} a_{\bm k} e^{i \bm k \bcdot\bm x } e^{-\frac{1}{2} k^2 l^2}   ,
+\end{align}
+%
+where $k^2 = \bm k \bcdot\bm k$, so that its squared norm $\langle \rho \rangle_l^* \langle \rho \rangle_l$ yields :
+%
+\begin{align}
+	&\langle \rho \rangle_l^* \langle \rho \rangle_l  = \sum_{\bm k} |a_{\bm k}|^2 e^{- k^2 l^2} + 2 \sum_{\bm k, \bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } e^{-\frac{1}{2} (k'^2 + k^2) l^2} \rbrace.
+\end{align}
+%
+We compute the smoothed ``energy'' (the square of the scalar field) $\langle \rho^* \rho \rangle_l$:
+%
+\begin{align}
+	\langle \rho^* \rho \rangle_l &= \langle \sum_{\bm k} |a_{\bm k}|^2  + 2 \sum_{\bm k, \bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } \rbrace  \rangle_l = \nonumber \\
+	&= \sum_{\bm k} |a_{\bm k}|^2 + 2 \sum_{\bm k, \bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } e^{-\frac{1}{2} (\bm k' - \bm k)^2 l^2} \rbrace.
+\end{align}
+%
+%We rewrite the term $e^{-\frac{1}{2} (\bm k_i + \bm k_j)^2 l^2}$ as $e^{-\frac{1}{2} (k_i^2 + k_j^2) l^2} e^{-(\bm k_i \bcdot\bm k_j)l^2}$, and similarly for $e^{-\frac{1}{2} (\bm k_i - \bm k_j)^2 l^2} = e^{-\frac{1}{2} (k_i^2 + k_j^2) l^2} e^{(\bm k_i \bcdot\bm k_j)l^2}$. We see that some simplifications occur when subtracting the \colorbox{green}{green} term and the \colorbox{yellow}{yellow} term. We can in fact rewrite the $\cos$ product in the \colorbox{yellow}{yellow} term using the multiplication formulae as:
+%%
+%\begin{align}
+%	&\mathcolorbox{yellow}{\sum_{i>j} 2 a_i a_j e^{-\frac{1}{2} (k_i^2 + k_j^2) l^2} \cos \left( \bm k_i \bcdot\bm x  + \alpha_i \right) \cos \left( \bm k_j \bcdot\bm x  + \alpha_j \right)} = \nonumber \\
+%	&\sum_{i>j} a_i a_j e^{-\frac{1}{2} (k_i^2 + k_j^2) l^2} \left[  \cos \left( (\bm k_i + \bm k_j) \bcdot\bm x  + \alpha_i + \alpha_j \right) +  \cos \left( (\bm k_i - \bm k_j) \bcdot\bm x  + \alpha_i - \alpha_j \right) \right].
+%\end{align}
+%
+The ``pseudo-energy'' of the density fluctuations $\mu_l(\rho,\rho) = \langle \rho^* \rho \rangle_l - \langle \rho \rangle_l^* \langle \rho \rangle_l$ can then be written as:
+%
+\begin{align}\label{eq:pseudo-energy-rho}
+	&\mu_l(\rho,\rho) =  \mathcolorbox{yellow}{\sum_{\bm k} |a_{\bm k}|^2 \left( 1 -  e^{- k^2 l^2} \right)} \nonumber \\
+	& + \mathcolorbox{green}{2 \sum_{\bm k, \bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } \rbrace \left[ e^{-\frac{1}{2} (\bm k' - \bm k)^2 l^2} - e^{-\frac{1}{2} (k'^2 + k^2) l^2}\right]} .
+\end{align}
+%
+In Eq.~\eqref{eq:pseudo-energy-rho} we have a \colorbox{yellow}{uniform} term and \colorbox{green}{spatially-varying} term. The uniform term is directly related to the amount of energy in the small scales. In fact, assuming a given spectral distribution of energy in $\bm k$ space (e.g., a power-law), 
+%is rather cumbersome, but we can immediately see that, 
+for all the $\bm k$ such that the filter length is much larger than than  the wavelength of the mode ($l \gg 1/k$), the series in the \colorbox{yellow}{first term} will approximately be
+%the only terms that do not vanish after integrating over the volume are
+%
+\begin{align}
+	\mathcolorbox{yellow}{\mu_l(B,B)} \approx \sum_{|\bm k| \gg 1/l} \left( |a_{\bm k}|^2 + |b_{\bm k}|^2 + |c_{\bm k}|^2 \right),
+\end{align}
+%
+which corresponds to our intuitive definition of the energy contained in the small-scale modes. The \colorbox{green}{spatially-varying} term vanishes exactly when integrated over the entire volume. When integration is carried out on a smaller sub-volume it is not guaranteed to be exactly zero, but should be sufficiently small provided that the extent of the region of integration is $\gg 1/| \bm k' - \bm k|$. \textbf{Note}: this condition may not be fully satisfied when $\bm k \approx \bm k'$ (but the two wavevectors in the \colorbox{green}{spatially-varying} term cannot be exactly the same).
 
 \subsection{Vector field: additive perturbation}
 
@@ -145,15 +350,15 @@ The smoothed field $\langle \bm B \rangle_l$ is (see Appendix~\ref{app:smoothing
 where $k^2 = \bm k \bcdot\bm k$, so that its squared norm $\langle \bm B \rangle_l^* \bcdot\langle \bm B \rangle_l$ yields (showing for simplicity only the terms relative to $B_x$):
 %
 \begin{align}
-	&\langle B_x \rangle_l^* \bcdot\langle B_x \rangle_l  = \sum_{\bm k} |a_{\bm k}|^2 e^{- k^2 l^2} + 2 \sum_{\bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } e^{-\frac{1}{2} (k'^2 + k^2) l^2} \rbrace,
+	&\langle B_x \rangle_l^* \bcdot\langle B_x \rangle_l  = \sum_{\bm k} |a_{\bm k}|^2 e^{- k^2 l^2} + 2 \sum_{\bm k, \bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } e^{-\frac{1}{2} (k'^2 + k^2) l^2} \rbrace,
 \end{align}
 %
 and similarly for the $B_y$ and $B_z$ terms.
 We compute the smoothed energy $\langle \bm B^* \bcdot\bm B \rangle_l = \langle B_x^* B_x + B_y^* B_y + B_z^* B_z \rangle_l$ component-wise. For $\langle B_x^* B_x \rangle_l$ we have:
 %
 \begin{align}
-	\langle B_x^* B_x \rangle_l &= \langle \sum_{\bm k} |a_{\bm k}|^2  + 2 \sum_{\bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } \rbrace  \rangle_l = \nonumber \\
-	&= \sum_{\bm k} |a_{\bm k}|^2 + 2 \sum_{\bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } e^{-\frac{1}{2} (\bm k' - \bm k)^2 l^2} \rbrace,
+	\langle B_x^* B_x \rangle_l &= \langle \sum_{\bm k} |a_{\bm k}|^2  + 2 \sum_{\bm k, \bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } \rbrace  \rangle_l = \nonumber \\
+	&= \sum_{\bm k} |a_{\bm k}|^2 + 2 \sum_{\bm k, \bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } e^{-\frac{1}{2} (\bm k' - \bm k)^2 l^2} \rbrace,
 \end{align}
 %
 and similarly for the $B_y^* B_y$ and $B_z^* B_z$ terms.
@@ -167,8 +372,8 @@ and similarly for the $B_y^* B_y$ and $B_z^* B_z$ terms.
 For simplicity we also split the ``pseudo-energy'' of the fluctuations $\mu_l(B,B) = \langle \bm B^* \bcdot\bm B \rangle_l - \langle \bm B \rangle_l^* \bcdot\langle \bm B \rangle_l$ between the $\mu_l(B_x,B_x)$, $\mu_l(B_y,B_y)$ and $\mu_l(B_z,B_z)$ components:
 %
 \begin{align}\label{eq:pseudo-energy-Bx}
-	&\mu_l(B_x,B_x) = \langle B_x^* B_x \rangle_l - \langle B_x \rangle_l^* \bcdot\langle B_x \rangle_l = \mathcolorbox{yellow}{\sum_{\bm k} |a_{\bm k}|^2 \left( 1 -  e^{- k^2 l^2} \right)} \nonumber \\
-	& + \mathcolorbox{green}{2 \sum_{\bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } \rbrace \left[ e^{-\frac{1}{2} (\bm k' - \bm k)^2 l^2} - e^{-\frac{1}{2} (k'^2 + k^2) l^2}\right]} .
+	&\mu_l(B_x,B_x) = \langle B_x^* B_x \rangle_l - \langle B_x \rangle_l^* \langle B_x \rangle_l = \mathcolorbox{yellow}{\sum_{\bm k} |a_{\bm k}|^2 \left( 1 -  e^{- k^2 l^2} \right)} \nonumber \\
+	& + \mathcolorbox{green}{2 \sum_{\bm k, \bm k' \neq \bm k} \Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } \rbrace \left[ e^{-\frac{1}{2} (\bm k' - \bm k)^2 l^2} - e^{-\frac{1}{2} (k'^2 + k^2) l^2}\right]} .
 \end{align}
 %
 In Eq.~\eqref{eq:pseudo-energy-Bx} we have a \colorbox{yellow}{uniform} term and \colorbox{green}{spatially-varying} term. The uniform term is directly related to the amount of energy in the small scales. In fact, assuming a given spectral distribution of energy in $\bm k$ space (e.g., a power-law), 
@@ -197,8 +402,8 @@ In much the same way as for the oblique mode on top of a uniform background, als
 %
 \begin{align}
 	&\delta B^2_{\text{naive}} \equiv \bm B^* \bcdot\bm B - \langle \bm B^* \bcdot\bm B \rangle_l =  B_x^*  B_x - \langle B_x^*  B_x \rangle_l + \ldots \text{($B_y$ and $B_z$ terms)} \nonumber \\
-	& = \sum_{\bm k} |a_{\bm k}|^2  + 2 \sum_{\bm k' \neq \bm k} \mathcolorbox{lgray}{\Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } \rbrace} \nonumber \\
-	& - \left[ \sum_{\bm k} |a_{\bm k}|^2  + 2 \sum_{\bm k' \neq \bm k} \mathcolorbox{lgray}{\Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } \rbrace} e^{-\frac{1}{2} (\bm k' - \bm k)^2 l^2} \right] + \nonumber \\
+	& = \sum_{\bm k} |a_{\bm k}|^2  + 2 \sum_{\bm k, \bm k' \neq \bm k} \mathcolorbox{lgray}{\Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } \rbrace} \nonumber \\
+	& - \left[ \sum_{\bm k} |a_{\bm k}|^2  + 2 \sum_{\bm k, \bm k' \neq \bm k} \mathcolorbox{lgray}{\Re \lbrace a_{\bm k}^* a_{\bm k'} e^{i (\bm k' - \bm k) \bcdot\bm x } \rbrace} e^{-\frac{1}{2} (\bm k' - \bm k)^2 l^2} \right] + \nonumber \\
 	& + \ldots \text{($B_y$ and $B_z$ terms)} \xrightarrow{\mathcal{V}^{-1}\int_\mathcal{V} \mathrm{d} \bm x}  0,
 \end{align}
 %
@@ -270,15 +475,26 @@ Using the result in Eq.~\eqref{eq:delta_density_mexican} and the criterion in Eq
 	&\leq  \sum_{\bm k} \left\lvert  \hat{\rho}_{\bm k} k^2 l^2 e^{-\frac{1}{2} k^2 l^2} e^{i \bm k \bcdot\bm x} \right\rvert = \sum_{\bm k} \left\lvert  \hat{\rho}_{\bm k} \right\rvert k^2 l^2 e^{-\frac{1}{2} k^2 l^2} ,
 \end{align}
 %
-where in going from the convolution integral to the Fourier representation we used the Fourier expansion of $\rho (\bm x)$ in Eq.~\eqref{eq:def_rho_scalar} and the expression for the smoothing of a complex exponential with the Mexican hat filter in Eq.~\eqref{eq:mex_smoothing_Fourier}. If we now assume that the density field has a power-law power spectrum with slope $-\alpha$ (i.e. $\left\lvert\hat{\rho}(\bm k)\right\rvert \propto k^{-\alpha / 2 - 1}$, see Eq.~\eqref{eq:power_law_fourier_coeff}), we can approximate the series in Eq.~\eqref{eq:inequality_series} by the integral over the continuous variable $\mathrm{d} \bm k$
+where in going from the convolution integral to the Fourier representation we used the Fourier expansion of $\rho (\bm x)$ in Eq.~\eqref{eq:def_rho_scalar} and the expression for the smoothing of a complex exponential with the Mexican hat filter in Eq.~\eqref{eq:mex_smoothing_Fourier}. If we now assume that the density field has a power-law power spectrum with slope $-\alpha$ (i.e. $\left\lvert\hat{\rho}(\bm k)\right\rvert = \rho_0 (k/k_0)^{-\alpha / 2 - 1}$, where $k_0$ is the integral scale of the turbulence, and $\rho_0$ is a normalization factor, see Eq.~\eqref{eq:power_law_fourier_coeff}), we can approximate the series in Eq.~\eqref{eq:inequality_series} by the integral over the continuous variable $\mathrm{d} \bm k$
 %
 \begin{align}\label{eq:iterative_crit_integral}
 	&\sum_{\bm k} k^{-\alpha / 2 - 1} k^2 l^2 e^{-\frac{1}{2} k^2 l^2} \approx \frac{1}{(\Delta k)^3} \int k^{-\alpha / 2 - 1} k^2 l^2 e^{-\frac{1}{2} k^2 l^2} \mathrm{d} \bm k \nonumber \\
-	&= \frac{L_x L_y L_z}{(2 \pi)^3} \int_0^{\infty} k^{-\alpha / 2 - 1} k^2 l^2 e^{-\frac{1}{2} k^2 l^2} 4 \pi k^2 \mathrm{d} k \nonumber \\
-	&= \frac{L_x L_y L_z}{2 \pi^2} 2^{1-\frac{\alpha }{4}} \Gamma \left(2-\frac{\alpha }{4}\right) l^{\frac{\alpha }{2}-2} \hspace{2em}\text{ if }\alpha <8,
+	&= \frac{V}{(2 \pi)^3} \int_{ lk_0 }^{\infty} k^{-\alpha / 2 - 1} k^2 l^2 e^{-\frac{1}{2} k^2 l^2} 4 \pi k^2 \mathrm{d} k \nonumber \\
+	&= \frac{V k_0^3}{2 \pi^2} (lk_0)^{\alpha/2 -2} \int_{lk_0}^{\infty} \tau^{-\alpha / 2 + 3} e^{-\frac{1}{2} \tau^2} \mathrm{d} \tau \nonumber \\
+	&= \frac{V k_0^3}{2 \pi^2} (lk_0)^{\alpha/2 -2} \left[ 2^{1-\frac{\alpha }{4}} \Gamma \left(2-\frac{\alpha }{4}\right) - \int_{0}^{lk_0} \tau^{-\alpha / 2 + 3} e^{-\frac{1}{2} \tau^2} \mathrm{d} \tau \right]  ,
+%	\nonumber \\
+%	&= \frac{L_x L_y L_z}{2 \pi^2}  l^{\frac{\alpha }{2}-2} \hspace{2em}\text{ if }\alpha <8,
 \end{align}
 %
-where $\Gamma(z)$ is the gamma function. The expression in Eq.~\eqref{eq:iterative_crit_integral} is a decreasing function of $l$ provided that $\alpha < 4$ (for comparison, $\alpha = 5/3 \simeq 1.67$ for Kolmogorov turbulence and $\alpha = 3$ for Burger turbulence), which means that convergence of the iterative scheme using criterion in Eq.~\eqref{eq:log_convergence_mod1} is guaranteed for large enough $l$.
+where $V = L_x L_y L_z$, $\Gamma(z)$ is the gamma function (the first integral converges if $\alpha < 8$). To be of any use, we require the iterative algorithm to converge for $l \ll 1/k_0$, and therefore the second integral can be neglected. Putting things together we can express the convergence criterion as:
+%
+\begin{align}
+	\frac{V k_0^3}{2 \pi^2} (lk_0)^{\alpha/2 -2}  2^{1-\frac{\alpha }{4}} \Gamma \left(2-\frac{\alpha }{4}\right)  \leq \eta \; \text{max} \left\lbrace  \frac{ \rho_{\text{max}} -\rho  }{\rho_0} , \frac{ \rho }{\rho_0}  \right\rbrace,
+\end{align}
+%
+where in this last step we used the fact that the density is a strictly postive quantity.
+%
+The expression in Eq.~\eqref{eq:iterative_crit_integral} is a decreasing function of $l$ provided that $\alpha < 4$ (for comparison, $\alpha = 5/3 \simeq 1.67$ for Kolmogorov turbulence and $\alpha = 3$ for Burger turbulence), which means that convergence of the iterative scheme using criterion in Eq.~\eqref{eq:log_convergence_mod1} is guaranteed for large enough $l$.
 
 \subsection{Vector field: multiplicative perturbation}
 
@@ -453,16 +669,54 @@ The fact that there is very good agreement between the black squares and the gre
 	\label{fig:magnetic_energy_vs_filter_length_smaller)subregions}
 \end{figure}
 
+
+\subsection{Iterative filter: comparison between different convergence criteria}
+
+In this Section we compare different numerical recipes for the iterative version of the multiscale filtering.
+
+\subsubsection{Scalar field}
+
+For a scalar field $\rho (\bm x)$ with decomposition $\rho (\bm x) = \langle \rho \rangle_l + \delta \rho_l $, where $l$ is the smoothing length of the filter, the original Vazza convergence criterion reads:
+%
+\begin{align}
+	\frac{\delta \rho_{l + \Delta l} - \delta \rho_{l}}{\delta \rho_{l}} \leq \epsilon,
+\end{align} 
+%
+where $\epsilon$ is a small parameter (typically $\epsilon 0.05$).
+
+\subsubsection{Vector field}
+
+For a vector field $\bm u (\bm x) = \langle \bm u \rangle_l + \delta \bm u_l$ in the original 2012 paper the same procedure as for the scalar field is repeated \textit{separately} for each velocity component. A variant that filters the velocity components simultaneously at the same smoothing length may be formulated as follows:
+%
+\begin{itemize}
+	\item For each $l$:
+	\begin{enumerate}
+		\item filter $\bm u_i$ ($i=1,2,3$) to obtain $\langle u_i \rangle_l$ and $\delta u_{i,l}$
+		\item compute the norm (L1 or L2) of the turbulent vector, e.g.:
+		\begin{align}
+			\mathrm{norm}(\delta \bm u_l) = \sqrt{ \sum \delta u_{i,l}^2}
+		\end{align}
+		\item compute the norm of the difference between the fluctuation:
+		\begin{align}
+			\mathrm{norm}(\delta \bm u_{l+\Delta l} - \delta \bm u_l) = \sqrt{ \sum (\delta u_{i,l+\Delta l} - \delta u_{i,l})^2}
+		\end{align}
+		\item rewrite the criterion for scalar as:
+		\begin{align}
+			\frac{\mathrm{norm}(\delta \bm u_{l+\Delta l} - \delta \bm u_l)}{\mathrm{norm}(\delta \bm u_l)} \leq \epsilon.
+		\end{align}
+	\end{enumerate}
+\end{itemize}
+
 \newpage
 
 \appendix
 
-\section{Some useful Fourier transforms}
+\section{Fourier transform of a Gaussian}
 
 The Fourier transform $\hat{\rho}_0$ of a gaussian $\rho_0 (x)$ (unitary convention, using angular frequency $k = 2 \pi / x$)
 %
 \begin{align}
-\rho_0 (x) = \frac{\exp \left(-\frac{x^2}{2 \sigma ^2}\right)}{\sqrt{2 \pi } \sigma }
+\rho_0 (x) = \frac{e^{-\frac{x^2}{2 \sigma ^2}}}{\sqrt{2 \pi } \sigma }
 \end{align}
 %
 is the following:
@@ -471,15 +725,24 @@ is the following:
 	\hat{\rho}_0 (k) = \frac{e^{-\frac{1}{2} k^2 \sigma ^2}}{\sqrt{2 \pi }},
 \end{align}
 %
-and similarly for a gaussian filter $W_l (x)$ with filtering length $l$ (replace $\sigma \rightarrow l$ in the equation above).
-
+and similarly for a gaussian filter $W_l (x)$ with filtering length $l$ (replace $\sigma \rightarrow l$ in the equation above):
+%
+\begin{align}
+	W_l(x) = \frac{e^{-\frac{x^2}{2 l ^2}}}{\sqrt{2 \pi } l } \; \; \xrightarrow[]{\hat{\mathcal{F}}}  \; \; \hat{W}_l (k) = \frac{e^{-\frac{1}{2} k^2 l ^2}}{\sqrt{2 \pi }}.
+\end{align}
+%
+For a three-dimensional Gaussian:
+%
+\begin{align}
+	W_l(\bm x) = \frac{e^{-\frac{|\bm x|^2}{2 l ^2}}}{(\sqrt{2 \pi } l )^3} \; \; \xrightarrow[]{\hat{\mathcal{F}}}  \; \; \hat{W}_l (\bm k) = \frac{e^{-\frac{1}{2} |\bm k|^2 l ^2}}{(\sqrt{2 \pi })^3}.
+\end{align}
 
 \section{Convolution theorem}
 
 For two functions $\rho (x)$ and $ W_l (x)$ with Fourier transforms $\hat{\rho}$ and $ \hat{W}_l$  (unitary convention, using angular frequency $k = 2 \pi / x$), the convolution theorem states that:
 
 \begin{align}\label{app:convolution}
-	( \rho * W_l) (x) =  \int_{-\infty}^{\infty} \rho(\tau) W_l(x-\tau)\, d\tau = \sqrt{2 \pi} \mathcal{F}^{-1} \left[ \hat{\rho} \hat{W}_l \right].
+	( \rho * W_l) (x) =  \int_{-\infty}^{\infty} \rho(\tau) W_l(x-\tau)\, d\tau = \sqrt{2 \pi} \hat{\mathcal{F}}^{-1} \left[ \hat{\rho} \hat{W}_l \right].
 \end{align}
 
 \section{Smoothing of a complex exponential}\label{app:smoothing_exp}
@@ -487,10 +750,12 @@ For two functions $\rho (x)$ and $ W_l (x)$ with Fourier transforms $\hat{\rho}$
 The convolution theorem with a gaussian kernel applied to a complex exponential function yields:
 %
 \begin{align}
-	\langle e^{i \bm k \bcdot\bm x} \rangle_l = e^{-\frac{1}{2} k^2 l^2} e^{i \bm k \bcdot\bm x} ,
+	\langle e^{i \bm k' \bcdot\bm x} \rangle_l &= \prod_{i=x,y,z} \sqrt{2 \pi} \hat{\mathcal{F}}^{-1} \left[ \widehat{e^{i k'_i x_i}} \, \hat{W}_l (k_i) \right] \nonumber \\ & = (2 \pi)^{3/2} \prod_{i=x,y,z} \hat{\mathcal{F}}^{-1} \left[ \sqrt{2\pi} \delta \left( k_i - k'_i \right) \, \frac{e^{-\frac{1}{2} k_i^2 l ^2}}{\sqrt{2 \pi } } \right] \nonumber \\
+	&= (2 \pi)^{3/2} \prod_{i=x,y,z} \frac{1}{\sqrt{2 \pi}} \int \delta \left( k_i - k'_i \right) e^{-\frac{1}{2} k_i^2 l ^2} e^{i k_i x_i} \mathrm{d} k_i \nonumber \\
+	&= e^{-\frac{1}{2} k'^2 l^2} e^{i \bm k' \bcdot\bm x} ,
 \end{align}
 %
-where $k^2 = \bm k \bcdot\bm k$.
+where $k'^2 = \bm k' \bcdot \bm k'$.
 
 \section{Relationship between Gaussian kernel and Mexican hat filter}\label{app:gaussian_mexican}
 
@@ -509,7 +774,7 @@ with respect to the width $l$ corresponds to a Mexican hat filter. In fact:
 where $M_l (\bm x)$ is the Mexican hat filter, generally defined as the negative normalized second derivative of a Gaussian function\footnote{\url{https://en.wikipedia.org/wiki/Ricker_wavelet}}. Note that the equivalence in Eq.~\eqref{eq:derivative_gaussian} stems from the fact the the gaussian is the solution to the diffusion equation $\partial_t W = (1/2) \nabla^2 W$ (replace $l^2 \rightarrow t$). In this document we use the operative definition
 %
 \begin{align}
-	M_l (\bm x) = - l \frac{\mathrm{d} W_l (\bm x)}{\mathrm{d} l}.
+	M_l (\bm x) \equiv - l \frac{\mathrm{d} W_l (\bm x)}{\mathrm{d} l} = \left[3 - \frac{x^2}{l^2} \right]  \frac{e^{-\frac{x^2}{2 l ^2}}}{(\sqrt{2 \pi } l )^3} .
 \end{align}
 %
 As a result, the smoothing of a complex exponential with the Mexican hat filter yields:
