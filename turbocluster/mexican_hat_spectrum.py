@@ -17,21 +17,18 @@ from .helper_functions import *
 class MexicanHatPowerSpectrum(SmoothingFilter):
     """
     """
-    def compute_spectrum(self, variable, mask=None, weight=None, optimized=False):
+    def compute_spectrum(self, variable, max_filter_length=None, mask=None, weight=None, 
+                         optimized=False, normalized=False):
 
         snap = self.snap
         
         if isinstance(variable, str):
-            var_unit = snap[variable].uq
-            # var_shape = snap[variable].shape
-        else:
-            var_unit = variable.uq
-            # var_shape  = variable.shape
-
-        
-
+            variable = snap[variable]
+        var_unit = variable.uq
+            
         # self.kmin = np.sqrt(2.0)/(self.max_search_radius.value/4.1)
-        max_filter_length = np.max(self.widths)/7.
+        if (max_filter_length == None):
+            max_filter_length = np.max(self.widths)/7.
         if (max_filter_length > self.max_search_radius / self.multiplier):
             raise RuntimeError('The chosen filter length (x4) is larger than the \
                 maximum search radius. This would cause searching for cells that \
@@ -43,11 +40,23 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
         k_vec = np.logspace(np.log10(self.kmin), np.log10(self.kmax), 15)/self.snap.length
         # this is a volume integral of the variance
         var_variance = np.zeros(k_vec.shape)*var_unit**2*self.snap.length**3 
+        if normalized:
+            var_variance /= var_unit**2
+            variable_orig = variable.copy
+            
         
 
         for i in range(len(k_vec)):
             k = k_vec[i]
             filt_len = (np.sqrt(2.0)/k)
+
+            if normalized:
+                smoothVar, turbVar = extract_turbulent_scalar(snap, self, 
+                                                          variable_orig, filt_len, 
+                                                          weight, filter_type="gaussian",
+                                                           iterative=False)
+                variable = turbVar/smoothVar
+                variable[~self.indicesFirstPass] = 0.0
 
             if (mask is None):
                 var_filtered, _ = extract_turbulent_scalar(snap, self, 
@@ -111,6 +120,108 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
         ## for 1D energy spectral density
         ## (we are assuming S_3D does not depend on the angular variable)
         power_spectrum1D = power_spectrum3D * 4.0*np.pi*(k_vec/(2.*np.pi))**2
+            
+        
+        return power_spectrum1D, k_vec
+
+    def compute_spectrum_vector(self, variable, max_filter_length=None, mask=None, weight=None, optimized=False):
+
+        snap = self.snap
+        
+        if isinstance(variable, str):
+            variable = snap[variable]
+        var_unit = variable.uq
+            
+
+        # self.kmin = np.sqrt(2.0)/(self.max_search_radius.value/4.1)
+        if (max_filter_length == None):
+            max_filter_length = np.max(self.widths)/7.
+        if (max_filter_length > self.max_search_radius / self.multiplier):
+            raise RuntimeError('The chosen filter length (x4) is larger than the \
+                maximum search radius. This would cause searching for cells that \
+                have not been moved to the GPU. To solve this decrease \
+                the filter length or increase the search radius accordingly')
+            
+        self.kmin = np.sqrt(2.0)/max_filter_length.value
+        self.kmax = 15.*self.kmin
+        k_vec = np.logspace(np.log10(self.kmin), np.log10(self.kmax), 15)/self.snap.length
+        # this is a volume integral of the variance
+        var_variance = np.zeros((len(k_vec),variable.shape[-1]))*var_unit**2*self.snap.length**3 
+        
+
+        for i in range(len(k_vec)):
+            k = k_vec[i]
+            filt_len = (np.sqrt(2.0)/k)
+
+            if (mask is None):
+                var_filtered, _ = extract_turbulent_vector(snap, self, 
+                                                          variable, filt_len, 
+                                                          weight, test_type="diff_of_gaussians",
+                                                           filter_type="mexican-hat",
+                                                           iterative=False)
+                for n in range(variable.shape[-1]):
+                    var_variance[i, n] = volume_integral(snap, self, var_filtered[:,n]**2,
+                                                  self.indicesFirstPass)
+            else:
+                ## equation A9 Arevalo+2012
+                G_sigma1_var, _ = extract_turbulent_vector(snap, self, 
+                                                          variable, filt_len/np.sqrt(1.0+epsilon), 
+                                                          weight, filter_type="gaussian",
+                                                           iterative=False)
+                # note that it does not matter what unit is mask
+                # because in the end it cancels out
+                # but we need a unit for the following function to work
+
+                # we use the convention that mask=1=True on the cells which we want
+                # to include, and mask=0=False on the cells to exclude
+                G_sigma1_mask, _ = extract_turbulent_scalar(snap, self, 
+                                                          mask*var_unit, filt_len/np.sqrt(1.0+epsilon), 
+                                                          weight, filter_type="gaussian",
+                                                           iterative=False)
+
+                G_sigma2_var, _ = extract_turbulent_vector(snap, self, 
+                                                          variable, filt_len*np.sqrt(1.0+epsilon), 
+                                                          weight, filter_type="gaussian",
+                                                           iterative=False)
+                G_sigma2_mask, _ = extract_turbulent_scalar(snap, self, 
+                                                          mask*var_unit, filt_len*np.sqrt(1.0+epsilon), 
+                                                          weight, filter_type="gaussian",
+                                                           iterative=False)
+
+                for n in range(variable.shape[-1]):
+                    
+                    S_k = (G_sigma1_var[:,n] / G_sigma1_mask - G_sigma2_var[:,n] / G_sigma2_mask ) * mask * var_unit
+    
+                    ## this is necessary to get rid of the NaNs
+                    ## due to division by G_sigma1/2_mask 
+                    ## (which is zero on a subset of the masked cells)
+                    S_k[~mask] = 0.0
+                    
+                    S_k /= epsilon
+    
+                    vol_tot = volume_integral(snap, self, np.ones(mask.shape),
+                                                  self.indicesFirstPass)
+    
+                    vol_non_masked = volume_integral(snap, self, mask,
+                                                  self.indicesFirstPass)
+    
+                    # equation A10 of Arevalo+2012
+                    var_variance[i, n] = (vol_tot/vol_non_masked) * volume_integral(snap, self, 
+                                                                              S_k**2,
+                                                                              self.indicesFirstPass)
+                
+        # equation A11 of Arevalo+2012 replacing k_r -> k / (2 \pi) 
+
+        ## this is the 3D energy spectral density
+        power_spectrum3D = []
+        for n in range(variable.shape[-1]):
+            power_spectrum3D.append( (var_variance[:, n]/k_vec**3)*(np.pi**(3./2.)*2**(11./2.))/(3.*5./2.) )
+
+        ## for 1D energy spectral density
+        ## (we are assuming S_3D does not depend on the angular variable)
+        power_spectrum1D = []
+        for n in range(variable.shape[-1]):
+            power_spectrum1D.append( power_spectrum3D[n] * 4.0*np.pi*(k_vec/(2.*np.pi))**2 )
             
         
         return power_spectrum1D, k_vec
