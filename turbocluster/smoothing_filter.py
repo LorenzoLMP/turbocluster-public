@@ -104,7 +104,8 @@ class SmoothingFilter:
 
         # Calculate the smoothing length
         rng = nvtx.start_range(message="smoothing_length")
-        self.hsml = 2.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
+        ## this is the radius of the 'spherical' voronoi cell
+        self.hsml = np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
         nvtx.end_range(rng)
 
         if pa.settings.use_units:
