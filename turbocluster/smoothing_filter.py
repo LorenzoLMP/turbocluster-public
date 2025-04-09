@@ -112,31 +112,28 @@ class SmoothingFilter:
 
         if search_radius is None:
             search_radius = 10.0 * self.hsml
+        elif not hasattr(search_radius, 'unit'):
+            search_radius = search_radius*code_length
 
         self.multiplier = 4.0
 
-        if hasattr(search_radius, 'unit'):
-            self.search_radius = 1.1*self.multiplier*search_radius.copy
-            assert search_radius.unit == code_length.unit, 'this restriction applies'
-        elif pa.settings.use_units:
-            self.search_radius = 1.1*self.multiplier*np.array(search_radius) * code_length
+
+        if not isinstance(search_radius.value, np.ndarray):
+            # it is not a vector already
+            search_radius = np.ones(self.hsml.shape)*search_radius
         else:
+            assert search_radius.shape[0] == self.hsml.shape[0]
+            
+        if pa.settings.use_units:
+            # use units
+            assert search_radius.unit == code_length.unit, 'this restriction applies'
+            self.search_radius = 1.1*self.multiplier*search_radius
+        else:
+            # does not need units
             self.search_radius = 1.1*self.multiplier*np.array(search_radius)
 
-        # if max_search_radius is None:
-        #     max_search_radius = 0.2 * np.max(self.widths)
-
-        # if hasattr(max_search_radius, 'unit'):
-        #     self.max_search_radius = max_search_radius.copy
-        #     assert max_search_radius.unit == code_length.unit, 'this restriction applies'
-        # elif pa.settings.use_units:
-        #     self.max_search_radius = np.array(max_search_radius) * code_length
-        # else:
-        #     self.max_search_radius = np.array(max_search_radius)
-
-        # tilingType = 'cartesian'
-        # if spherical:
-        #     tilingType = 'spherical'
+        
+        
 
         # rng = nvtx.start_range(message="region_selection")
         if (tilingType == 'cartesian'):

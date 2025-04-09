@@ -65,7 +65,7 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
                                                            filter_type="mexican-hat",
                                                            iterative=False)
                 
-                var_variance[i] = volume_integral(snap, self, var_filtered**2,
+                var_variance[i] = volume_integral(snap, var_filtered**2,
                                               self.indicesFirstPass)
             else:
                 ## equation A9 Arevalo+2012
@@ -102,14 +102,14 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
                 
                 S_k /= epsilon
 
-                vol_tot = volume_integral(snap, self, np.ones(mask.shape),
+                vol_tot = volume_integral(snap, np.ones(mask.shape),
                                               self.indicesFirstPass)
 
-                vol_non_masked = volume_integral(snap, self, mask,
+                vol_non_masked = volume_integral(snap, mask,
                                               self.indicesFirstPass)
 
                 # equation A10 of Arevalo+2012
-                var_variance[i] = (vol_tot/vol_non_masked) * volume_integral(snap, self, 
+                var_variance[i] = (vol_tot/vol_non_masked) * volume_integral(snap, 
                                                                           S_k**2,
                                                                           self.indicesFirstPass)
         # equation A11 of Arevalo+2012 replacing k_r -> k / (2 \pi) 
@@ -160,7 +160,7 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
                                                            filter_type="mexican-hat",
                                                            iterative=False)
                 for n in range(variable.shape[-1]):
-                    var_variance[i, n] = volume_integral(snap, self, var_filtered[:,n]**2,
+                    var_variance[i, n] = volume_integral(snap, var_filtered[:,n]**2,
                                                   self.indicesFirstPass)
             else:
                 ## equation A9 Arevalo+2012
@@ -199,14 +199,14 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
                     
                     S_k /= epsilon
     
-                    vol_tot = volume_integral(snap, self, np.ones(mask.shape),
+                    vol_tot = volume_integral(snap, np.ones(mask.shape),
                                                   self.indicesFirstPass)
     
-                    vol_non_masked = volume_integral(snap, self, mask,
+                    vol_non_masked = volume_integral(snap, mask,
                                                   self.indicesFirstPass)
     
                     # equation A10 of Arevalo+2012
-                    var_variance[i, n] = (vol_tot/vol_non_masked) * volume_integral(snap, self, 
+                    var_variance[i, n] = (vol_tot/vol_non_masked) * volume_integral(snap, 
                                                                               S_k**2,
                                                                               self.indicesFirstPass)
                 
