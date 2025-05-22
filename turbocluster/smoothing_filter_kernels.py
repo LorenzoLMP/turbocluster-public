@@ -7,7 +7,8 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                      start_index_for_tile, particles_per_tile, tile_widths,
                      variable, weights, offsets, npixs, center, widths, filter_lengths, 
                      smooth_var, filter_type, hitsNeighbours, isParticleInDomain, 
-                     iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier):
+                     iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier,
+                          max_filter_length):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -30,13 +31,16 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
         else: #iterative
             # iterative scheme ~Vazza+2012 
             # filter length is gradually increased
-            filter_length = 0.1 * filter_lengths[oldIp] 
-            if (0.1 * filter_lengths[oldIp] < 1.0 * hsml[oldIp]):  
-                filter_length = 1.0 * hsml[oldIp] 
+            # let's start from twice the radius
+            filter_length = 2.0 * hsml[oldIp] 
+            # filter_length = 0.1 * filter_lengths[oldIp] 
+            # if (0.1 * filter_lengths[oldIp] < 1.0 * hsml[oldIp]):  
+            #     filter_length = 1.0 * hsml[oldIp] 
             # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
-            
-        filterIncrease = 0.5*hsml[oldIp] # it is additive factor (?)
-        max_filter_length = 10.0*filter_lengths[oldIp] 
+
+        # increase by one radius
+        filterIncrease = hsml[oldIp] # it is additive factor (?)
+        # max_filter_length = max_search_radius
         # need to make sure that with max_filter_length it does not go
         # beyond region loaded on GPU
         
@@ -236,7 +240,8 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                      start_index_for_tile, particles_per_tile, tile_widths,
                      variable_x, variable_y, variable_z, weights, offsets, npixs, center, widths, filter_lengths, 
                      smooth_var_x, smooth_var_y, smooth_var_z, filter_type, hitsNeighbours, isParticleInDomain, 
-                     iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier):
+                     iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier,
+                                 max_filter_length):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -261,13 +266,16 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
         else: #iterative
             # iterative scheme ~Vazza+2012 
             # filter length is gradually increased
-            filter_length = 0.1 * filter_lengths[oldIp] 
-            if (0.1 * filter_lengths[oldIp] < 1.0 * hsml[oldIp]):  
-                filter_length = 1.0 * hsml[oldIp] 
+            # let's start from twice the radius
+            filter_length = 2.0 * hsml[oldIp] 
+            # filter_length = 0.1 * filter_lengths[oldIp] 
+            # if (0.1 * filter_lengths[oldIp] < 1.0 * hsml[oldIp]):  
+            #     filter_length = 1.0 * hsml[oldIp] 
             # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
-            
-        filterIncrease = 0.5*hsml[oldIp] # it is additive factor (?)
-        max_filter_length = 10.0*filter_lengths[oldIp] 
+
+        # increase by one radius
+        filterIncrease = hsml[oldIp] # it is additive factor (?)
+        # max_filter_length = 10.0*filter_lengths[oldIp] 
         # need to make sure that with max_filter_length it does not go
         # beyond region loaded on GPU
         
@@ -500,7 +508,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
 def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
                  variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, 
                  filter_type, hitsNeighbours, isParticleInDomain, iterativeFilter, hasConverged, 
-                 numIterations, filter_lengths_out, multiplier):
+                 numIterations, filter_lengths_out, multiplier, max_filter_length):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -530,13 +538,15 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
     else: #iterative
         # iterative scheme ~Vazza+2012 
         # filter length is gradually increased
-        filter_length = 0.1 * filter_lengths[ip] 
-        if (0.1 * filter_lengths[ip] < 1.0 * hsml[ip]):  
-            filter_length = 1.0 * hsml[ip] 
+        # let's start from twice the radius
+        filter_length = 2.0 * hsml[ip] 
+        # filter_length = 0.1 * filter_lengths[ip] 
+        # if (0.1 * filter_lengths[ip] < 1.0 * hsml[ip]):  
+        #     filter_length = 1.0 * hsml[ip] 
         # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
         
-    filterIncrease = 0.5*hsml[ip] # it is additive factor (?)
-    max_filter_length = 10.0*filter_lengths[ip] 
+    filterIncrease = hsml[ip] # it is additive factor (?)
+    # max_filter_length = 10.0*filter_lengths[ip] 
     # need to make sure that with max_filter_length it does not go
     # beyond region loaded on GPU
     
@@ -749,7 +759,8 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                            variable, weights, nSects, center, rMin, rMax, 
                            _rMin, _rMax, filter_lengths, smooth_var, filter_type, 
                             hitsNeighbours, isParticleInDomain, typeGrid, power, 
-                           iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier):
+                           iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier,
+                          max_filter_length):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -796,13 +807,14 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
     else: #iterative
         # iterative scheme ~Vazza+2012
         # filter length is gradually increased
-        filter_length = 0.1 * filter_lengths[ip]
-        if (0.1 * filter_lengths[ip] < 1.0 * hsml[ip]):
-            filter_length = 1.0 * hsml[ip]
+        filter_length = 2.0 * hsml[ip]
+        # filter_length = 0.1 * filter_lengths[ip]
+        # if (0.1 * filter_lengths[ip] < 1.0 * hsml[ip]):
+        #     filter_length = 1.0 * hsml[ip]
         # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
 
-    filterIncrease = 0.5*hsml[ip] # it is additive factor (?)
-    max_filter_length = 10.0*filter_lengths[ip]
+    filterIncrease = hsml[ip] # it is additive factor (?)
+    # max_filter_length = 10.0*filter_lengths[ip]
     # need to make sure that with max_filter_length it does not go
     # beyond region loaded on GPU
 

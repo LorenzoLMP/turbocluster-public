@@ -278,6 +278,8 @@ class SmoothingFilter:
         center = self.gpu_variables['center']
         offsets = self.tile.off_sets
         
+        max_search_radius = self.max_search_radius # includes the multiplier
+        
         if self.cartesian:
             tile_widths = self.tile.tile_widths
             widths = self.gpu_variables['widths']
@@ -322,7 +324,7 @@ class SmoothingFilter:
                                                            variable, weights, offsets, npixs, center, widths, 
                                                            filter_lengths, smooth_var, filter_type, hitsNeighbours,
                                                               isParticleInDomain, iterativeFilter, hasConverged, 
-                                                               numIterations, filter_lengths_out, self.multiplier)
+                                                               numIterations, filter_lengths_out, self.multiplier, max_search_radius)
             nvtx.end_range(rng)
         elif self.spherical:
             rng = nvtx.start_range(message="spherical filter")
@@ -331,7 +333,7 @@ class SmoothingFilter:
                                                            variable, weights, nSects, center, rMin, rMax, _rMin, _rMax,
                                                            filter_lengths, smooth_var, filter_type, hitsNeighbours,
                                                            isParticleInDomain, typeGrid, power, iterativeFilter,
-                                                           hasConverged, numIterations, filter_lengths_out, self.multiplier)
+                                                           hasConverged, numIterations, filter_lengths_out, self.multiplier, max_search_radius)
             nvtx.end_range(rng)
         
         self.hitsNeighbours = hitsNeighbours
@@ -554,6 +556,9 @@ class SmoothingFilter:
         widths = self.gpu_variables['widths']
         offsets = self.tile.off_sets
         filter_lengths = self.gpu_variables['filter_lengths']
+
+        max_search_radius = self.max_search_radius # includes the multiplier
+        
         if filter_type == "mean":
             filter_type = 0
         elif filter_type == "gaussian":
@@ -603,7 +608,7 @@ class SmoothingFilter:
                                                            variable, weights, offsets, npixs, center, widths, 
                                                           filter_lengths, smooth_var, filter_type, hitsNeighbours,
                                                               isParticleInDomain, iterativeFilter, hasConverged, 
-                                                               numIterations, filter_lengths_out, self.multiplier)
+                                                               numIterations, filter_lengths_out, self.multiplier, max_search_radius)
         nvtx.end_range(rng)
 
         self.hitsNeighbours = hitsNeighbours
@@ -720,6 +725,8 @@ class SmoothingFilter:
         start_index_for_tile = self.tile.start_index_for_tile
         particles_per_tile = self.tile.particles_per_tile
         tile_widths = self.tile.tile_widths
+
+        max_search_radius = self.max_search_radius # includes the multiplier
         
         variable_x = self.gpu_variables[variable_x_str]
         variable_y = self.gpu_variables[variable_y_str]
@@ -782,7 +789,7 @@ class SmoothingFilter:
                                                            variable_x, variable_y, variable_z, weights, offsets, npixs, center, widths, 
                                                           filter_lengths, smooth_var_x, smooth_var_y, smooth_var_z, filter_type, hitsNeighbours,
                                                               isParticleInDomain, iterativeFilter, hasConverged, 
-                                                               numIterations, filter_lengths_out, self.multiplier)
+                                                               numIterations, filter_lengths_out, self.multiplier, max_search_radius)
         nvtx.end_range(rng)
 
         self.hitsNeighbours = hitsNeighbours
