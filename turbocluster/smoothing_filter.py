@@ -278,7 +278,7 @@ class SmoothingFilter:
         center = self.gpu_variables['center']
         offsets = self.tile.off_sets
         
-        max_search_radius = self.max_search_radius # includes the multiplier
+        max_search_radius = self.max_search_radius.value/self.multiplier
         
         if self.cartesian:
             tile_widths = self.tile.tile_widths
@@ -348,6 +348,12 @@ class SmoothingFilter:
             num_part_converg = np.sum(self.hasConvergedUnSorted[self.isParticleInDomainUnSorted>0])
             percent_converg = num_part_converg/tot_particles_domain
             print("%.2f percent of particles (%d / %d) has converged"%(percent_converg*100,num_part_converg,tot_particles_domain))
+            mean_iter = np.mean(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])
+            std_iter = np.std(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])
+            print("Number iterations needed: %.2f (+/- %.2f)"%(mean_iter,std_iter))
+            print("Min/Max iterations needed: %d / %d"%(np.min(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0]),
+                                                        np.max(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])))
+        
             
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
@@ -557,7 +563,7 @@ class SmoothingFilter:
         offsets = self.tile.off_sets
         filter_lengths = self.gpu_variables['filter_lengths']
 
-        max_search_radius = self.max_search_radius # includes the multiplier
+        max_search_radius = self.max_search_radius.value/self.multiplier
         
         if filter_type == "mean":
             filter_type = 0
@@ -623,6 +629,12 @@ class SmoothingFilter:
             num_part_converg = np.sum(self.hasConvergedUnSorted[self.isParticleInDomainUnSorted>0])
             percent_converg = num_part_converg/tot_particles_domain
             print("%.2f percent of particles (%d / %d) has converged"%(percent_converg*100,num_part_converg,tot_particles_domain))
+            mean_iter = np.mean(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])
+            std_iter = np.std(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])
+            print("Number iterations needed: %.2f (+/- %.2f)"%(mean_iter,std_iter))
+            print("Min/Max iterations needed: %d / %d"%(np.min(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0]),
+                                                        np.max(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])))
+        
         
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
@@ -726,7 +738,7 @@ class SmoothingFilter:
         particles_per_tile = self.tile.particles_per_tile
         tile_widths = self.tile.tile_widths
 
-        max_search_radius = self.max_search_radius # includes the multiplier
+        max_search_radius = self.max_search_radius.value/self.multiplier
         
         variable_x = self.gpu_variables[variable_x_str]
         variable_y = self.gpu_variables[variable_y_str]
@@ -804,6 +816,12 @@ class SmoothingFilter:
             num_part_converg = np.sum(self.hasConvergedUnSorted[self.isParticleInDomainUnSorted>0])
             percent_converg = num_part_converg/tot_particles_domain
             print("%.2f percent of particles (%d / %d) has converged"%(percent_converg*100,num_part_converg,tot_particles_domain))
+            mean_iter = np.mean(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])
+            std_iter = np.std(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])
+            print("Number iterations needed: %.2f (+/- %.2f)"%(mean_iter,std_iter))
+            print("Min/Max iterations needed: %d / %d"%(np.min(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0]),
+                                                        np.max(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])))
+        
         
         return cp.asnumpy(smooth_var_x[self.tile.unsort_index]), cp.asnumpy(smooth_var_y[self.tile.unsort_index]), cp.asnumpy(smooth_var_z[self.tile.unsort_index]) 
 

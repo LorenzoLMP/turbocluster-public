@@ -40,7 +40,6 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
 
         # increase by one radius
         filterIncrease = hsml[oldIp] # it is additive factor (?)
-        # max_filter_length = max_search_radius
         # need to make sure that with max_filter_length it does not go
         # beyond region loaded on GPU
         
