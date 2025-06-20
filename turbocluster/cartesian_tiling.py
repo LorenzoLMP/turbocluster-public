@@ -43,6 +43,17 @@ def get_tile_information(tile_index, particles_per_tile, start_index_for_tile):
                         (ip_tile_x, ip_tile_y, ip_tile_z), ip)
 
 @cuda.jit
+def accumulate_quantity_per_tile(tile_index, quantity_per_tile, quantity):
+    """
+    """
+    ip = cuda.grid(1)
+    if ip < tile_index.shape[0]:
+        ip_tile_x, ip_tile_y, ip_tile_z = tile_index[ip, :]
+        cuda.atomic.add(quantity_per_tile,
+                        (ip_tile_x, ip_tile_y, ip_tile_z), quantity[ip])
+        
+
+@cuda.jit
 def compactify_kernel(occupancy_arr, cumulative_occupancy_flat, npixs,
                       Nmax, particles_per_tile,
                       start_index_for_tile, numBlocksCompactGrid, 
@@ -77,7 +88,8 @@ class CartesianTiling:
 
         Np = positions.shape[0]
 
-        blocks_1d = (Np + (threadsperblock - 1)) // threadsperblock
+        self.blocks_1d  = blocks_1d = (Np + (threadsperblock - 1)) // threadsperblock
+        self.threadsperblock = threadsperblock
 
         # Copy positions
         self._pos = cp.array(positions)
@@ -127,6 +139,22 @@ class CartesianTiling:
             self.start_index_for_tile)
         nvtx.end_range(rng)
 
+    def accumulate_per_tile(self, quantity):
+        """
+        This function accumulates a variable per each tile
+        """
+
+        tile_index = self.tile_index
+
+        npix_x = int(self.npixs[0])
+        npix_y = int(self.npixs[1])
+        npix_z = int(self.npixs[2])
+        
+        quantity_per_tile = cp.zeros((npix_x, npix_y, npix_z), dtype="double")
+            
+        accumulate_quantity_per_tile[self.blocks_1d, self.threadsperblock](tile_index, quantity_per_tile, quantity)
+
+        return quantity_per_tile
 
     def compactify_grid(self, Nmax):
         occupancy_arr = ((self.particles_per_tile + (Nmax - 1)) // Nmax).flatten()
