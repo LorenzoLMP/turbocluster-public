@@ -100,8 +100,8 @@ class CartesianTiling:
         npix_y = int(self.tilebox_widths[1] / self.tilebox_widths[0] * npix)
         npix_z = int(self.tilebox_widths[2] / self.tilebox_widths[0] * npix)
 
-        npix_y = np.max([npix_y, 1])
-        npix_z = np.max([npix_z, 1])
+        npix_y = max([npix_y, 1])
+        npix_z = max([npix_z, 1])
 
         self.npixs = cp.array([npix_x, npix_y, npix_z])
 

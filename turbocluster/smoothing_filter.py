@@ -279,6 +279,14 @@ class SmoothingFilter:
         offsets = self.tile.off_sets
         
         max_search_radius = self.max_search_radius.value/self.multiplier
+
+
+        if 'selection' in self.gpu_variables.keys():
+            isParticleInSelection = self.gpu_variables['selection']
+        else:
+            isParticleInSelection = cp.ones(variable.shape,dtype="bool")
+            # isParticleInSelection = None
+
         
         if self.cartesian:
             tile_widths = self.tile.tile_widths
@@ -324,7 +332,7 @@ class SmoothingFilter:
                                                            variable, weights, offsets, npixs, center, widths, 
                                                            filter_lengths, smooth_var, filter_type, hitsNeighbours,
                                                               isParticleInDomain, iterativeFilter, hasConverged, 
-                                                               numIterations, filter_lengths_out, self.multiplier, max_search_radius)
+                                                               numIterations, filter_lengths_out, self.multiplier, max_search_radius, isParticleInSelection)
             nvtx.end_range(rng)
         elif self.spherical:
             rng = nvtx.start_range(message="spherical filter")
@@ -333,7 +341,7 @@ class SmoothingFilter:
                                                            variable, weights, nSects, center, rMin, rMax, _rMin, _rMax,
                                                            filter_lengths, smooth_var, filter_type, hitsNeighbours,
                                                            isParticleInDomain, typeGrid, power, iterativeFilter,
-                                                           hasConverged, numIterations, filter_lengths_out, self.multiplier, max_search_radius)
+                                                           hasConverged, numIterations, filter_lengths_out, self.multiplier, max_search_radius, isParticleInSelection)
             nvtx.end_range(rng)
         
         self.hitsNeighbours = hitsNeighbours
@@ -393,12 +401,13 @@ class SmoothingFilter:
         return variable_str, unit_quantity
 
     def filter_variable(self, variable, filter_length, weight=None, filter_type="mean", iterative=False,
-                       shared_mem=False, Nmax=64, optimized=False):
+                       shared_mem=False, Nmax=64, optimized=False, selection=None):
         """
         shared_mem has been tested only with filter_type="mean"
         Nmax is the max number of particles per block. Each tile is split
         in "logic" blocks with Nmax particles max (can be less, but not zero)
         and assigned to exactly 1 block of threads with Nmax threads
+        selection can be a subset of the cubic/spherical region
         """
 
         if (shared_mem and optimized):
@@ -435,6 +444,9 @@ class SmoothingFilter:
                 have not been moved to the GPU. To solve this decrease \
                 the filter length or increase the search radius accordingly')
             self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length.value
+
+        if selection is not None:
+            self._send_variable_to_gpu(selection*self.snap.uq(''), gpu_key='selection')
 
         # Do the filtering
         if not shared_mem:
@@ -564,6 +576,8 @@ class SmoothingFilter:
         filter_lengths = self.gpu_variables['filter_lengths']
 
         max_search_radius = self.max_search_radius.value/self.multiplier
+
+        
         
         if filter_type == "mean":
             filter_type = 0
@@ -589,6 +603,12 @@ class SmoothingFilter:
         isParticleInDomain = cp.zeros(pos.shape[0])
         
         check_particle[self.blocks_1d, self.threadsperblock](pos, hsml, center, widths, isParticleInDomain)
+
+        if 'selection' in self.gpu_variables.keys():
+            ## if we want to filter only a selection of the domain
+            isParticleInSelection = self.gpu_variables['selection']
+            isParticleInDomain *= isParticleInSelection
+                   
         self.isParticleInDomain = isParticleInDomain
         cumulative_occupancy = cp.cumsum(isParticleInDomain)
         numParticlesInDomain = int(cumulative_occupancy[-1])
@@ -640,7 +660,7 @@ class SmoothingFilter:
 
     def filter_vector(self, variable_x, variable_y, variable_z, filter_length, weight=None, 
                        filter_type="mean", iterative=False,
-                       shared_mem=False, Nmax=64, optimized=False):
+                       shared_mem=False, Nmax=64, optimized=False, selection=None):
         """
         shared_mem has been tested only with filter_type="mean"
         Nmax is the max number of particles per block. Each tile is split
@@ -684,6 +704,9 @@ class SmoothingFilter:
                 have not been moved to the GPU. To solve this decrease \
                 the filter length or increase the search radius accordingly')
             self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length.value
+
+        if selection is not None:
+            self._send_variable_to_gpu(selection*self.snap.uq(''), gpu_key='selection')
 
         # Do the filtering
         if not shared_mem:
@@ -773,6 +796,12 @@ class SmoothingFilter:
         isParticleInDomain = cp.zeros(pos.shape[0])
         
         check_particle[self.blocks_1d, self.threadsperblock](pos, hsml, center, widths, isParticleInDomain)
+
+        if 'selection' in self.gpu_variables.keys():
+            ## if we want to filter only a selection of the domain
+            isParticleInSelection = self.gpu_variables['selection']
+            isParticleInDomain *= isParticleInSelection
+            
         self.isParticleInDomain = isParticleInDomain
         cumulative_occupancy = cp.cumsum(isParticleInDomain)
         numParticlesInDomain = int(cumulative_occupancy[-1])

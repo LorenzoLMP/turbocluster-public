@@ -507,7 +507,7 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
 def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
                  variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, 
                  filter_type, hitsNeighbours, isParticleInDomain, iterativeFilter, hasConverged, 
-                 numIterations, filter_lengths_out, multiplier, max_filter_length):
+                 numIterations, filter_lengths_out, multiplier, max_filter_length, isParticleInSelection):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -569,7 +569,11 @@ def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile
             if (zp > zmin) and (zp < zmax):
                 inside_domain = True
 
-    if inside_domain:
+    # inside_selection = True
+    # if isParticleInSelection is not None:
+    #     inside_selection = isParticleInSelection[ip]
+
+    if inside_domain and isParticleInSelection[ip]:
 
         isParticleInDomain[ip] += 1
 
@@ -759,7 +763,7 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
                            _rMin, _rMax, filter_lengths, smooth_var, filter_type, 
                             hitsNeighbours, isParticleInDomain, typeGrid, power, 
                            iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier,
-                          max_filter_length):
+                          max_filter_length, isParticleInSelection):
     """
     filter_lengths is an array of size pos.shape([0])
     type can be "mean" or "gaussian"
@@ -832,7 +836,11 @@ def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
     nSectPhi = int(nSectPhi)
     nSectThe = int(nSectThe)
     
-    if inside_domain:
+    # inside_selection = True
+    # if isParticleInSelection is not None:
+    #     inside_selection = isParticleInSelection[ip]
+
+    if inside_domain and isParticleInSelection[ip]:
         
         isParticleInDomain[ip] += 1
 
