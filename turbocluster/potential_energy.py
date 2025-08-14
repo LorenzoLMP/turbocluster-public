@@ -216,6 +216,7 @@ class PotentialEnergy:
         center = self.gpu_variables['center']
         widths = self.gpu_variables['widths']
         offsets = self.tile.off_sets
+        tan_theta0 = np.tan(angle*np.pi/180) ## angle is in degrees, theta0 in radiants
 
         potential_in_tile = cp.zeros(particles_per_tile.shape, dtype="double")
 
@@ -229,7 +230,8 @@ class PotentialEnergy:
         ## of the cartesian grid, NOT particle!
         compute_potential_energy[blocks_1d, threadsperblock](pos, mass, smoothing_length, 
                                                              tile_index, start_index_for_tile,
-                                                            particles_per_tile, tile_widths,
+                                                            particles_per_tile, mass_per_tile,
+                                                            tile_widths, tan_theta0,
                                                             offsets, npixs, center, widths, 
                                                             potential_in_tile)
         nvtx.end_range(rng)

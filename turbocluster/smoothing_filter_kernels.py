@@ -77,6 +77,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
             normalization = 0.0
             weight_tmp = 0.0
             numInteractingPartNew = 0
+            numSearchedPart = 0
 
             ####################################
             # code to check what are the tiles that can overlap
@@ -118,6 +119,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                                                                  tile_y, tile_z]
             
                                 for ip_other in range(start_index, start_index + n_particles):
+                                    numSearchedPart += 1
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_window * filter_length:
                                         # smoothing kernel
@@ -146,6 +148,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                                                                  tile_y, tile_z]
             
                                 for ip_other in range(start_index, start_index + n_particles):
+                                    numSearchedPart += 1
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_window *  filter_length:
                                         # smoothing kernel
@@ -173,6 +176,7 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
                                                                  tile_y, tile_z]
             
                                 for ip_other in range(start_index, start_index + n_particles):
+                                    numSearchedPart += 1
                                     dist = distance((xp, yp, zp), pos[ip_other])
                                     if dist < filter_window *  filter_length:
                                         # smoothing kernel
@@ -225,6 +229,10 @@ def apply_filter_optimized(oldIndex, pos, hsml, tile_index,
 
         smooth_var[oldIp] = smoothVarRegister
         hitsNeighbours[oldIp] = numInteractingPartNew
+        ## if not iterative we are going to be recycling the 
+        ## hasConverged array to store how many particles it has searched
+        if (iterativeFilter == 0): # not iterative
+            hasConverged[oldIp] = numSearchedPart
         if (iterativeFilter == 1): # iterative
             filter_lengths_out[oldIp] = filter_length
             numIterations[oldIp] = numIter
