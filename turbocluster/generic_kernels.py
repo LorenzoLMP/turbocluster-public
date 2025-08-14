@@ -1,6 +1,7 @@
 import cupy as cp
 from numba import cuda
 import math
+import nvtx 
 
 epsilon = 1e-2 
 
@@ -44,6 +45,7 @@ def mexican_kernel_2(dist, filter_length):
 
     return weight
 
+
 @cuda.jit(device=True, inline=True)
 def check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                    tile_x, tile_y, tile_z,
@@ -51,7 +53,8 @@ def check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
                    tile_widths, filter_length):
 
     overlap = False
-
+    
+    
     xcoord_edge = delta_x
     if (tile_x > ip_tile_x):
         xcoord_edge = tile_widths[0] * (tile_x - ip_tile_x - 0.5)

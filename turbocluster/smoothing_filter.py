@@ -640,10 +640,10 @@ class SmoothingFilter:
         self.hitsNeighbours = hitsNeighbours
         self.hitsNeighboursUnSorted = hitsNeighbours[self.tile.unsort_index]
         self.isParticleInDomainUnSorted = isParticleInDomain[self.tile.unsort_index]
+        self.hasConvergedUnSorted = hasConverged[self.tile.unsort_index]
         
         if iterative:
             self.filter_lengths_out = filter_lengths_out[self.tile.unsort_index]
-            self.hasConvergedUnSorted = hasConverged[self.tile.unsort_index]
             self.numIterationsUnSorted = numIterations[self.tile.unsort_index]
             tot_particles_domain = np.sum(self.isParticleInDomainUnSorted)
             num_part_converg = np.sum(self.hasConvergedUnSorted[self.isParticleInDomainUnSorted>0])
