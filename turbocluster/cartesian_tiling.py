@@ -13,7 +13,7 @@ def find_tile_single_dim(particle_pos, nx, tile_width):
 @cuda.jit
 def find_tile_index(pos, npixs, tile_widths, tile_index):
     """
-    Assuming equal width for simplicity for now
+    
     """
     ip = cuda.grid(1)
 
@@ -50,6 +50,16 @@ def accumulate_quantity_per_tile(tile_index, quantity_per_tile, quantity):
     if ip < tile_index.shape[0]:
         ip_tile_x, ip_tile_y, ip_tile_z = tile_index[ip, :]
         cuda.atomic.add(quantity_per_tile,
+                        (ip_tile_x, ip_tile_y, ip_tile_z), quantity[ip])
+
+@cuda.jit
+def findmax_quantity_per_tile(tile_index, quantity_per_tile, quantity):
+    """
+    """
+    ip = cuda.grid(1)
+    if ip < tile_index.shape[0]:
+        ip_tile_x, ip_tile_y, ip_tile_z = tile_index[ip, :]
+        cuda.atomic.max(quantity_per_tile,
                         (ip_tile_x, ip_tile_y, ip_tile_z), quantity[ip])
         
 
@@ -111,7 +121,7 @@ class CartesianTiling:
 
         self._pos -= self.off_sets[None, :]
 
-        # Get tile information
+        # tile_index tells us which tile does each particle belong to
         self.tile_index = cp.zeros((Np, 3), dtype=int)
 
         self.particles_per_tile = cp.zeros((npix_x, npix_y, npix_z), dtype=int)
@@ -119,6 +129,7 @@ class CartesianTiling:
         self.start_index_for_tile = cp.ones(
             (npix_x, npix_y, npix_z), dtype=int) * Np + 1
 
+        # Get what tile does each particle belong to
         rng = nvtx.start_range(message="find_tile_index")
         find_tile_index[blocks_1d, threadsperblock](
             self._pos, self.npixs, self.tile_widths, self.tile_index)
@@ -153,9 +164,26 @@ class CartesianTiling:
         npix_y = int(self.npixs[1])
         npix_z = int(self.npixs[2])
         
-        quantity_per_tile = cp.zeros((npix_x, npix_y, npix_z), dtype="double")
+        quantity_per_tile = cp.zeros((npix_x, npix_y, npix_z), dtype=cp.float64)
             
         accumulate_quantity_per_tile[self.blocks_1d, self.threadsperblock](tile_index, quantity_per_tile, quantity)
+
+        return quantity_per_tile
+
+    def findmax_per_tile(self, quantity):
+        """
+        This function finds max of a variable per each tile
+        """
+
+        tile_index = self.tile_index
+
+        npix_x = int(self.npixs[0])
+        npix_y = int(self.npixs[1])
+        npix_z = int(self.npixs[2])
+        
+        quantity_per_tile = cp.zeros((npix_x, npix_y, npix_z), dtype=cp.float64)
+            
+        findmax_quantity_per_tile[self.blocks_1d, self.threadsperblock](tile_index, quantity_per_tile, quantity)
 
         return quantity_per_tile
 

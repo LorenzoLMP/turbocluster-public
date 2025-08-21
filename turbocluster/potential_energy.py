@@ -64,12 +64,16 @@ class PotentialEnergy:
                                         self.gpu_variables['widths'], 0.0, npix=npix,
                                         threadsperblock=threadsperblock)
 
-            # compute total mass in each tile
-            self.tile.mass_per_tile = self.tile.accumulate_per_tile(self.gpu_variables['mass'])
-
+            
+        
+        
         # Do the sorting
         self.gpu_variables['pos'] = self.gpu_variables['pos'][self.tile.sort_index, :]
         self.gpu_variables['mass'] = self.gpu_variables['mass'][self.tile.sort_index]
+
+        # compute total mass in each tile
+        self.tile.mass_per_tile = self.tile.accumulate_per_tile(self.gpu_variables['mass'])
+
 
         self.Np = Np = self.gpu_variables['pos'].shape[0]
 
@@ -77,6 +81,8 @@ class PotentialEnergy:
         self.threadsperblock = threadsperblock
 
         nvtx.end_range(rng0)
+
+        self.G = G = 6.67430e-8 * snap.uq('cm^3 g^-1 s^-2')
 
 
     def _do_region_selection(self):
@@ -93,18 +99,18 @@ class PotentialEnergy:
             
             get_index = pa.util.get_index_of_cubic_region
             #### also here we are defaulting to gas particles!!!
-            self.index = get_index(self.snap["0_Coordinates"],
+            self.index = get_index(self.pos,
                                    center, widths, snap.box)
             
         else:
             get_index = pa.util.get_index_of_rotated_cubic_region
-            self.index = get_index(self.snap["0_Coordinates"],
+            self.index = get_index(self.pos,
                                    center, widths, snap.box,
                                    self.orientation)
         nvtx.end_range(rng)
 
         self.pos = self.pos[self.index]
-        # self.hsml = self.hsml[self.index]
+        self.mass = self.mass[self.index]
 
         self._send_data_to_gpu()
 
@@ -187,13 +193,16 @@ class PotentialEnergy:
         else:
             self.gpu_variables['smoothing_length'] = cp.ones(self.Np) * smoothing_length.value
 
+        # finds max smoothing length in each tile
+        self.tile.max_hsml_per_tile = self.tile.findmax_per_tile(self.gpu_variables['smoothing_length'])
+
         # Do the computation
         potential = self._compute_potential_gpu(angle)
 
         potential = cp.asnumpy(potential)
 
         if pa.settings.use_units:
-            potential = potential * self.code_mass**2 / self.code_length
+            potential = self.G * potential * self.code_mass**2 / self.code_length
 
         nvtx.end_range(rng0)
         
@@ -208,6 +217,7 @@ class PotentialEnergy:
         tile_index = self.tile.tile_index
         start_index_for_tile = self.tile.start_index_for_tile
         particles_per_tile = self.tile.particles_per_tile
+        max_hsml_per_tile = self.tile.max_hsml_per_tile
         tile_widths = self.tile.tile_widths
         mass_per_tile = self.tile.mass_per_tile
         smoothing_length = self.gpu_variables['smoothing_length']
@@ -216,7 +226,9 @@ class PotentialEnergy:
         center = self.gpu_variables['center']
         widths = self.gpu_variables['widths']
         offsets = self.tile.off_sets
-        tan_theta0 = np.tan(angle*np.pi/180) ## angle is in degrees, theta0 in radiants
+        tan_theta0 = np.tan(0.5*angle*np.pi/180) ## angle is in degrees, theta0 in radiants
+        ## theta0 is half the angle of the isosceles triangle with short side H and orthogonal D
+        ## i.e. tan(theta0) = (H/2)/D
 
         potential_in_tile = cp.zeros(particles_per_tile.shape, dtype="double")
 
@@ -231,11 +243,12 @@ class PotentialEnergy:
         compute_potential_energy[blocks_1d, threadsperblock](pos, mass, smoothing_length, 
                                                              tile_index, start_index_for_tile,
                                                             particles_per_tile, mass_per_tile,
-                                                            tile_widths, tan_theta0,
+                                                            max_hsml_per_tile, tile_widths, tan_theta0,
                                                             offsets, npixs, center, widths, 
                                                             potential_in_tile)
         nvtx.end_range(rng)
 
+        
         potential = 0.5*cp.sum(potential_in_tile)
 
         return potential
