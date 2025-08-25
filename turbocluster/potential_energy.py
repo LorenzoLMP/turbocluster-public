@@ -17,7 +17,8 @@ class PotentialEnergy:
     uniform cartesian grid, and approximating long-range interactions as two point masses
     """
 
-    def __init__(self, snap, center, widths, pos, mass, orientation=None, search_radius=None,
+    def __init__(self, snap, center, widths, pos, mass, smoothing_length, 
+                 orientation=None, search_radius=None,
                  npix=128, threadsperblock=256, tilingType='cartesian'):
 
         """
@@ -52,8 +53,19 @@ class PotentialEnergy:
         else:
             self.widths = np.array(widths)
 
+        if hasattr(smoothing_length, 'unit'):
+            assert smoothing_length.unit == code_length.unit, 'this restriction applies'
+        elif pa.settings.use_units:
+            smoothing_length = smoothing_length * code_length
+            # raise RuntimeError('smoothing_length must have unit')
+
+        if hasattr(mass, 'unit'):
+            assert mass.unit == code_mass.unit, 'this restriction applies'
+        elif pa.settings.use_units:
+            mass = mass * code_mass
+            # raise RuntimeError('smoothing_length must have unit')
+
         self.pos = pos
-        self.mass = mass
 
         if (tilingType == 'cartesian'):
             self._do_region_selection()
@@ -69,10 +81,7 @@ class PotentialEnergy:
         
         # Do the sorting
         self.gpu_variables['pos'] = self.gpu_variables['pos'][self.tile.sort_index, :]
-        self.gpu_variables['mass'] = self.gpu_variables['mass'][self.tile.sort_index]
-
-        # compute total mass in each tile
-        self.tile.mass_per_tile = self.tile.accumulate_per_tile(self.gpu_variables['mass'])
+        
 
 
         self.Np = Np = self.gpu_variables['pos'].shape[0]
@@ -80,9 +89,32 @@ class PotentialEnergy:
         self.blocks_1d = (Np + (threadsperblock - 1)) // threadsperblock
         self.threadsperblock = threadsperblock
 
+
+        # send mass to gpu
+        if isinstance(mass.value, np.ndarray):
+            assert mass.shape[0] == self.index.shape[0]
+            self._send_variable_to_gpu(mass, gpu_key='mass')
+        else:
+            self.gpu_variables['mass'] = cp.ones(self.Np) * mass.value
+
+        # compute total mass in each tile
+        self.tile.mass_per_tile = self.tile.accumulate_per_tile(self.gpu_variables['mass'])
+        
+
+        # send smoothing_length to gpu
+        if isinstance(smoothing_length.value, np.ndarray):
+            assert smoothing_length.shape[0] == self.index.shape[0]
+            self._send_variable_to_gpu(smoothing_length, gpu_key='smoothing_length')
+        else:
+            self.gpu_variables['smoothing_length'] = cp.ones(self.Np) * smoothing_length.value
+
+        # finds max smoothing length in each tile
+        self.tile.max_hsml_per_tile = self.tile.findmax_per_tile(self.gpu_variables['smoothing_length'])
+
+
         nvtx.end_range(rng0)
 
-        self.G = G = 6.67430e-8 * snap.uq('cm^3 g^-1 s^-2')
+        self.G = G = pa.astropy.constants.G
 
 
     def _do_region_selection(self):
@@ -110,7 +142,6 @@ class PotentialEnergy:
         nvtx.end_range(rng)
 
         self.pos = self.pos[self.index]
-        self.mass = self.mass[self.index]
 
         self._send_data_to_gpu()
 
@@ -118,10 +149,8 @@ class PotentialEnergy:
         self.gpu_variables = {}
         if pa.settings.use_units:
             self.gpu_variables['pos'] = cp.array(self.pos.value)
-            self.gpu_variables['mass'] = cp.array(self.mass.value)
         else:
             self.gpu_variables['pos'] = cp.array(self.pos)
-            self.gpu_variables['mass'] = cp.array(self.mass)
 
         if self.orientation is not None:
             self.gpu_variables['rotation_matrix'] = cp.array(
@@ -171,7 +200,7 @@ class PotentialEnergy:
 
         return variable_str, unit_quantity
 
-    def compute_potential(self, smoothing_length, angle=5):
+    def compute_potential(self, angle=15):
         """
         angle is in degrees
         smoothing_length is an array of the smoothing lengths
@@ -183,18 +212,9 @@ class PotentialEnergy:
         # variable_str, unit_quantity = self._send_variable_to_gpu(variable)
 
 
-        if not hasattr(smoothing_length, 'unit'):
-            raise RuntimeError('smoothing_length must have unit')
+        
 
-        # send smoothing_length to gpu
-        if isinstance(smoothing_length.value, np.ndarray):
-            assert smoothing_length.shape[0] == self.index.shape[0]
-            self._send_variable_to_gpu(smoothing_length, gpu_key='smoothing_length')
-        else:
-            self.gpu_variables['smoothing_length'] = cp.ones(self.Np) * smoothing_length.value
-
-        # finds max smoothing length in each tile
-        self.tile.max_hsml_per_tile = self.tile.findmax_per_tile(self.gpu_variables['smoothing_length'])
+        
 
         # Do the computation
         potential = self._compute_potential_gpu(angle)
@@ -213,6 +233,8 @@ class PotentialEnergy:
         """
         pos = self.gpu_variables['pos']
         mass = self.gpu_variables['mass']
+        smoothing_length = self.gpu_variables['smoothing_length']
+        
         
         tile_index = self.tile.tile_index
         start_index_for_tile = self.tile.start_index_for_tile
@@ -220,17 +242,19 @@ class PotentialEnergy:
         max_hsml_per_tile = self.tile.max_hsml_per_tile
         tile_widths = self.tile.tile_widths
         mass_per_tile = self.tile.mass_per_tile
-        smoothing_length = self.gpu_variables['smoothing_length']
+        
 
         npixs = self.tile.npixs
         center = self.gpu_variables['center']
         widths = self.gpu_variables['widths']
         offsets = self.tile.off_sets
-        tan_theta0 = np.tan(0.5*angle*np.pi/180) ## angle is in degrees, theta0 in radiants
+        tan_theta0 = np.tan(0.5*angle*np.pi/180 + 1e-12) ## angle is in degrees, theta0 in radiants
         ## theta0 is half the angle of the isosceles triangle with short side H and orthogonal D
         ## i.e. tan(theta0) = (H/2)/D
 
         potential_in_tile = cp.zeros(particles_per_tile.shape, dtype="double")
+        self.particles_hit = particles_hit = cp.zeros(pos.shape[0], dtype='int')
+        self.tiles_hit = tiles_hit = cp.zeros(particles_per_tile.shape, dtype='int')
 
         rng = nvtx.start_range(message="potential energy kernel")
 
@@ -240,12 +264,22 @@ class PotentialEnergy:
 
         ## this kernel is called with a thread assigned to each block
         ## of the cartesian grid, NOT particle!
-        compute_potential_energy[blocks_1d, threadsperblock](pos, mass, smoothing_length, 
+        compute_potential_energy_coarse[blocks_1d, threadsperblock](pos, mass, smoothing_length,
                                                              tile_index, start_index_for_tile,
                                                             particles_per_tile, mass_per_tile,
                                                             max_hsml_per_tile, tile_widths, tan_theta0,
                                                             offsets, npixs, center, widths, 
-                                                            potential_in_tile)
+                                                            potential_in_tile, tiles_hit)
+
+        blocks_1d = (pos.shape[0] + (threadsperblock - 1)) // threadsperblock
+        ## this kernel is called with a thread assigned to each particle!
+        compute_potential_energy_N2[blocks_1d, threadsperblock](pos, mass, smoothing_length,
+                                                             tile_index, start_index_for_tile,
+                                                            particles_per_tile, mass_per_tile,
+                                                            max_hsml_per_tile, tile_widths, tan_theta0,
+                                                            offsets, npixs, center, widths, 
+                                                            potential_in_tile, particles_hit)
+        
         nvtx.end_range(rng)
 
         
