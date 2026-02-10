@@ -29,6 +29,16 @@ def gaussian_kernel(dist, filter_length):
     return weight
 
 @cuda.jit(device=True, inline=True)
+def gradient_gaussian(pos, pos_other, distance, filter_length):
+
+    W_l = gaussian_kernel(distance, filter_length)
+    grad_x = -(pos[0] - pos_other[0])*W_l / filter_length**2
+    grad_y = -(pos[1] - pos_other[1])*W_l / filter_length**2
+    grad_z = -(pos[2] - pos_other[2])*W_l / filter_length**2
+
+    return grad_x, grad_y, grad_z
+
+@cuda.jit(device=True, inline=True)
 def mexican_kernel(dist, filter_length):
 
     weight = (3 - (dist/filter_length)**2)

@@ -10,6 +10,7 @@ import nvtx
 
 from .smoothing_filter_kernels import *
 from .generic_kernels import *
+from .derivative_smooth_filt_kernels import *
 
 
 class SmoothingFilter:
@@ -18,7 +19,8 @@ class SmoothingFilter:
 
     def __init__(self, snap, center, widths, orientation=None, search_radius=None,
                  npix=128, threadsperblock=256, tilingType='cartesian', numPhi=-1, 
-                 numTheta=-1, rMin=-1.0, rMax=-1.0, typeGrid='log', powerGrid=0):
+                 numTheta=-1, rMin=-1.0, rMax=-1.0, typeGrid='log', powerGrid=0,
+                gauss_multiplier=4):
         """
         If spherical=True, npix is the number of intervals in the radial direction
         in the phi and theta direction we have npix, and npix/2 intervals
@@ -116,8 +118,9 @@ class SmoothingFilter:
         elif not hasattr(search_radius, 'unit'):
             search_radius = search_radius*code_length
 
-        self.multiplier = 4.0
-
+        # self.multiplier = 4.0
+        # self.multiplier = 6.0 ## this is better
+        self.multiplier = gauss_multiplier
 
         if not isinstance(search_radius.value, np.ndarray):
             # it is not a vector already
@@ -853,6 +856,349 @@ class SmoothingFilter:
         
         
         return cp.asnumpy(smooth_var_x[self.tile.unsort_index]), cp.asnumpy(smooth_var_y[self.tile.unsort_index]), cp.asnumpy(smooth_var_z[self.tile.unsort_index]) 
+
+
+    def derivative_variable(self, variable, filter_length, weight=None, filter_type="gaussian", 
+                            iterative=False, optimized=True, selection=None):
+        """
+        This function computes the derivative of a smoothed variable
+        by moving the derivative under the integral sign and doing a convolution
+        with the derivative of the kernel. If the integration bounds are 
+        extended to infinity this does not introduce extra boundary terms
+        (see Leibniz' integral rule https://en.wikipedia.org/wiki/Leibniz_integral_rule)
+        and for sufficiently fast-decaying smoothing kernels the error in 
+        truncating the integration bounds should be small anyway.
+        """
+
+        if (filter_type != "gaussian"):
+            raise RuntimeError('derivative currently has only gaussian')
+        if (iterative):
+            raise RuntimeError('derivative has no iterative option')
+        if (not optimized):
+            raise RuntimeError('derivative only uses optimized kernel')
+        if (weight is not None):
+            print('Derivative does not support weighted integration. Argument will be ignored')
+            
+        rng0 = nvtx.start_range(message="do_filter")
+        
+        variable_str, unit_quantity = self._send_variable_to_gpu(variable)
+
+        if not hasattr(filter_length, 'unit'):
+            raise RuntimeError('filter_length must have unit')
+        filt_length_unit = filter_length.unit_quantity
+
+        # send filter_length to gpu
+        if isinstance(filter_length.value, np.ndarray):
+            assert filter_length.shape[0] == self.index.shape[0]
+            if (self.multiplier*np.max(filter_length[self.indicesFirstPass]) > self.max_search_radius):
+                raise RuntimeError('The chosen filter length (x4) is larger than the \
+                maximum search radius. This would cause searching for cells that \
+                have not been moved to the GPU. To solve this decrease \
+                the filter length or increase the search radius accordingly')
+            self._send_variable_to_gpu(filter_length, gpu_key='filter_lengths')
+        else:
+            if (self.multiplier*filter_length > self.max_search_radius):
+                raise RuntimeError('The chosen filter length (x4) is larger than the \
+                maximum search radius. This would cause searching for cells that \
+                have not been moved to the GPU. To solve this decrease \
+                the filter length or increase the search radius accordingly')
+            self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length.value
+
+        if selection is not None:
+            self._send_variable_to_gpu(selection*self.snap.uq(''), gpu_key='selection')
+
+        # Compute the gradient in x, y, z
+        # grad_var is a 3-dim vector
+        grad_var = self._apply_derivative_gpu(variable_str, filter_type)
+        
+        if unit_quantity is not None:
+            grad_var = grad_var * unit_quantity / filt_length_unit
+
+        nvtx.end_range(rng0)
+        
+        return grad_var
+
+    def derivative_vector(self, variable_x, variable_y, variable_z, filter_length, 
+                            weight=None, filter_type="gaussian", 
+                            iterative=False, optimized=True, selection=None):
+        """
+        This function computes the derivative of a smoothed variable
+        by moving the derivative under the integral sign and doing a convolution
+        with the derivative of the kernel. If the integration bounds are 
+        extended to infinity this does not introduce extra boundary terms
+        (see Leibniz' integral rule https://en.wikipedia.org/wiki/Leibniz_integral_rule)
+        and for sufficiently fast-decaying smoothing kernels the error in 
+        truncating the integration bounds should be small anyway.
+        """
+
+        if (filter_type != "gaussian"):
+            raise RuntimeError('derivative currently has only gaussian')
+        if (iterative):
+            raise RuntimeError('derivative has no iterative option')
+        if (not optimized):
+            raise RuntimeError('derivative only uses optimized kernel')
+        if (weight is not None):
+            print('Derivative does not support weighted integration. Argument will be ignored')
+            
+        rng0 = nvtx.start_range(message="do_filter")
+
+        variable_x_str, unit_quantity = self._send_variable_to_gpu(variable_x, gpu_key='input_variable_x')
+        variable_y_str, unit_quantity = self._send_variable_to_gpu(variable_y, gpu_key='input_variable_y')
+        variable_z_str, unit_quantity = self._send_variable_to_gpu(variable_z, gpu_key='input_variable_z')
+
+        if not hasattr(filter_length, 'unit'):
+            raise RuntimeError('filter_length must have unit')
+        filt_length_unit = filter_length.unit_quantity
+
+        # send filter_length to gpu
+        if isinstance(filter_length.value, np.ndarray):
+            assert filter_length.shape[0] == self.index.shape[0]
+            if (self.multiplier*np.max(filter_length[self.indicesFirstPass]) > self.max_search_radius):
+                raise RuntimeError('The chosen filter length (x4) is larger than the \
+                maximum search radius. This would cause searching for cells that \
+                have not been moved to the GPU. To solve this decrease \
+                the filter length or increase the search radius accordingly')
+            self._send_variable_to_gpu(filter_length, gpu_key='filter_lengths')
+        else:
+            if (self.multiplier*filter_length > self.max_search_radius):
+                raise RuntimeError('The chosen filter length (x4) is larger than the \
+                maximum search radius. This would cause searching for cells that \
+                have not been moved to the GPU. To solve this decrease \
+                the filter length or increase the search radius accordingly')
+            self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length.value
+
+        if selection is not None:
+            self._send_variable_to_gpu(selection*self.snap.uq(''), gpu_key='selection')
+
+        # Compute the gradient in x, y, z
+        # grad_var_x is a 3-dim vector that contains 
+        # the x, y, and z derivative of var_x
+        # same for the others
+        grad_var_x, grad_var_y, grad_var_z = self._apply_derivative_vector_gpu(variable_x_str, 
+                                                                              variable_y_str,
+                                                                              variable_z_str, 
+                                                                              filter_type)
+        
+        if unit_quantity is not None:
+            grad_var_x = grad_var_x * unit_quantity / filt_length_unit
+            grad_var_y = grad_var_y * unit_quantity / filt_length_unit
+            grad_var_z = grad_var_z * unit_quantity / filt_length_unit
+
+        nvtx.end_range(rng0)
+        
+        return grad_var_x, grad_var_y, grad_var_z
+
+    def _apply_derivative_gpu(self, variable_str, filter_type):
+        """
+        
+        """
+
+        if self.spherical:
+            raise RuntimeError('optimized filter has only \
+                                been tested with cartesian grids')
+
+        if (filter_type != "gaussian"):
+            raise RuntimeError('derivative currently has only gaussian')
+            
+        pos = self.gpu_variables['pos']
+        hsml = self.gpu_variables['hsml']
+        # - self.tile.off_sets[None,:]
+        tile_index = self.tile.tile_index
+        start_index_for_tile = self.tile.start_index_for_tile
+        particles_per_tile = self.tile.particles_per_tile
+        tile_widths = self.tile.tile_widths
+        variable = self.gpu_variables[variable_str]
+        npixs = self.tile.npixs
+        center = self.gpu_variables['center']
+        widths = self.gpu_variables['widths']
+        offsets = self.tile.off_sets
+        filter_lengths = self.gpu_variables['filter_lengths']
+
+        max_search_radius = self.max_search_radius.value/self.multiplier
+        
+        if filter_type == "mean":
+            filter_type = 0
+        elif filter_type == "gaussian":
+            filter_type = 1
+        elif filter_type == "mexican-hat":
+            filter_type = 2
+       
+
+        if cp.max(filter_lengths) > self.extra_layer_thickness_value:
+            err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
+            raise RuntimeError(err_msg)
+
+        isParticleInDomain = cp.zeros(pos.shape[0])
+        
+        check_particle[self.blocks_1d, self.threadsperblock](pos, hsml, center, widths, isParticleInDomain)
+
+        if 'selection' in self.gpu_variables.keys():
+            ## if we want to filter only a selection of the domain
+            isParticleInSelection = self.gpu_variables['selection']
+            isParticleInDomain *= isParticleInSelection
+                   
+        self.isParticleInDomain = isParticleInDomain
+        cumulative_occupancy = cp.cumsum(isParticleInDomain)
+        numParticlesInDomain = int(cumulative_occupancy[-1])
+        oldIndex = cp.zeros(numParticlesInDomain,dtype=int)
+        
+        compactify_particles[self.blocks_1d, self.threadsperblock](pos, tile_index,
+                                        cumulative_occupancy.flatten(), isParticleInDomain, 
+                                        oldIndex)
+        self.oldIndex = oldIndex
+        
+        blocks_1d = (numParticlesInDomain + (self.threadsperblock - 1)) // self.threadsperblock
+        
+        grad_x_var = cp.zeros_like(variable)
+        grad_y_var = cp.zeros_like(variable)
+        grad_z_var = cp.zeros_like(variable)
+        
+        hitsNeighbours = cp.zeros(variable.shape,dtype="int")
+        hasConverged = cp.zeros(variable.shape,dtype="int")
+
+        rng = nvtx.start_range(message="cartesian filter (optimized)")
+
+        apply_derivative[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, 
+                     start_index_for_tile, particles_per_tile, tile_widths,
+                     variable, offsets, npixs, center, widths, filter_lengths, 
+                     grad_x_var, grad_y_var, grad_z_var, filter_type, hitsNeighbours, isParticleInDomain, 
+                     hasConverged, self.multiplier)
+        
+        nvtx.end_range(rng)
+
+        self.hitsNeighbours = hitsNeighbours
+        self.hitsNeighboursUnSorted = hitsNeighbours[self.tile.unsort_index]
+        self.isParticleInDomainUnSorted = isParticleInDomain[self.tile.unsort_index]
+        self.hasConvergedUnSorted = hasConverged[self.tile.unsort_index]
+        
+        grad_x_var_unsort = cp.asnumpy(grad_x_var[self.tile.unsort_index])
+        grad_y_var_unsort = cp.asnumpy(grad_y_var[self.tile.unsort_index])
+        grad_z_var_unsort = cp.asnumpy(grad_z_var[self.tile.unsort_index])
+
+        grad_var = np.stack((grad_x_var_unsort, grad_y_var_unsort, grad_z_var_unsort), axis=1)
+        
+        return grad_var 
+
+    def _apply_derivative_vector_gpu(self, variable_x_str, variable_y_str, variable_z_str, 
+                                    filter_type):
+        """
+        
+        """
+
+        if self.spherical:
+            raise RuntimeError('optimized filter has only \
+                                been tested with cartesian grids')
+
+        if (filter_type != "gaussian"):
+            raise RuntimeError('derivative currently has only gaussian')
+            
+        pos = self.gpu_variables['pos']
+        hsml = self.gpu_variables['hsml']
+        # - self.tile.off_sets[None,:]
+        tile_index = self.tile.tile_index
+        start_index_for_tile = self.tile.start_index_for_tile
+        particles_per_tile = self.tile.particles_per_tile
+        tile_widths = self.tile.tile_widths
+
+        variable_x = self.gpu_variables[variable_x_str]
+        variable_y = self.gpu_variables[variable_y_str]
+        variable_z = self.gpu_variables[variable_z_str]
+        
+        npixs = self.tile.npixs
+        center = self.gpu_variables['center']
+        widths = self.gpu_variables['widths']
+        offsets = self.tile.off_sets
+        filter_lengths = self.gpu_variables['filter_lengths']
+
+        max_search_radius = self.max_search_radius.value/self.multiplier
+        
+        if filter_type == "mean":
+            filter_type = 0
+        elif filter_type == "gaussian":
+            filter_type = 1
+        elif filter_type == "mexican-hat":
+            filter_type = 2
+       
+
+        if cp.max(filter_lengths) > self.extra_layer_thickness_value:
+            err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
+            raise RuntimeError(err_msg)
+
+        isParticleInDomain = cp.zeros(pos.shape[0])
+        
+        check_particle[self.blocks_1d, self.threadsperblock](pos, hsml, center, widths, isParticleInDomain)
+
+        if 'selection' in self.gpu_variables.keys():
+            ## if we want to filter only a selection of the domain
+            isParticleInSelection = self.gpu_variables['selection']
+            isParticleInDomain *= isParticleInSelection
+                   
+        self.isParticleInDomain = isParticleInDomain
+        cumulative_occupancy = cp.cumsum(isParticleInDomain)
+        numParticlesInDomain = int(cumulative_occupancy[-1])
+        oldIndex = cp.zeros(numParticlesInDomain,dtype=int)
+        
+        compactify_particles[self.blocks_1d, self.threadsperblock](pos, tile_index,
+                                        cumulative_occupancy.flatten(), isParticleInDomain, 
+                                        oldIndex)
+        self.oldIndex = oldIndex
+        
+        blocks_1d = (numParticlesInDomain + (self.threadsperblock - 1)) // self.threadsperblock
+        
+        grad_x_vec_x = cp.zeros_like(variable_x)
+        grad_x_vec_y = cp.zeros_like(variable_x)
+        grad_x_vec_z = cp.zeros_like(variable_x)
+
+        grad_y_vec_x = cp.zeros_like(variable_x)
+        grad_y_vec_y = cp.zeros_like(variable_x)
+        grad_y_vec_z = cp.zeros_like(variable_x)
+
+        grad_z_vec_x = cp.zeros_like(variable_x)
+        grad_z_vec_y = cp.zeros_like(variable_x)
+        grad_z_vec_z = cp.zeros_like(variable_x)
+        
+        hitsNeighbours = cp.zeros(variable_x.shape,dtype="int")
+        hasConverged = cp.zeros(variable_x.shape,dtype="int")
+
+        rng = nvtx.start_range(message="cartesian filter (optimized)")
+
+        apply_derivative_vector[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, 
+                     start_index_for_tile, particles_per_tile, tile_widths,
+                     variable_x, variable_y, variable_z, offsets, npixs, 
+                     center, widths, filter_lengths, 
+                     grad_x_vec_x, grad_x_vec_y, grad_x_vec_z, 
+                     grad_y_vec_x, grad_y_vec_y, grad_y_vec_z,
+                     grad_z_vec_x, grad_z_vec_y, grad_z_vec_z, filter_type, hitsNeighbours, 
+                     isParticleInDomain, hasConverged, self.multiplier)
+        
+        nvtx.end_range(rng)
+
+        self.hitsNeighbours = hitsNeighbours
+        self.hitsNeighboursUnSorted = hitsNeighbours[self.tile.unsort_index]
+        self.isParticleInDomainUnSorted = isParticleInDomain[self.tile.unsort_index]
+        self.hasConvergedUnSorted = hasConverged[self.tile.unsort_index]
+        
+        grad_x_vec_x_unsort = cp.asnumpy(grad_x_vec_x[self.tile.unsort_index])
+        grad_y_vec_x_unsort = cp.asnumpy(grad_y_vec_x[self.tile.unsort_index])
+        grad_z_vec_x_unsort = cp.asnumpy(grad_z_vec_x[self.tile.unsort_index])
+
+        grad_vec_x = np.stack((grad_x_vec_x_unsort, grad_y_vec_x_unsort, grad_z_vec_x_unsort), axis=1)
+
+        grad_x_vec_y_unsort = cp.asnumpy(grad_x_vec_y[self.tile.unsort_index])
+        grad_y_vec_y_unsort = cp.asnumpy(grad_y_vec_y[self.tile.unsort_index])
+        grad_z_vec_y_unsort = cp.asnumpy(grad_z_vec_y[self.tile.unsort_index])
+
+        grad_vec_y = np.stack((grad_x_vec_y_unsort, grad_y_vec_y_unsort, grad_z_vec_y_unsort), axis=1)
+
+        grad_x_vec_z_unsort = cp.asnumpy(grad_x_vec_z[self.tile.unsort_index])
+        grad_y_vec_z_unsort = cp.asnumpy(grad_y_vec_z[self.tile.unsort_index])
+        grad_z_vec_z_unsort = cp.asnumpy(grad_z_vec_z[self.tile.unsort_index])
+
+        grad_vec_z = np.stack((grad_x_vec_z_unsort, grad_y_vec_z_unsort, grad_z_vec_z_unsort), axis=1)
+        
+        return grad_vec_x, grad_vec_y, grad_vec_z
+
+
 
     def __del__(self):
         """
