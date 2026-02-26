@@ -107,7 +107,7 @@ $\Lambda_{\ell}$ is called baropycnal work (large-scale pressure gradient and ma
 %
 $Q_{\ell}$ is called large-scale pressure dilatation (converts large-scale energy from kinetic to thermal): 
 \begin{align}\label{eq:largescale_press_dil_term}
-	Q_{\ell} = - \overline{p}_{\mathrm{tot}} \partial_i  \overline{u}_i . 
+	Q_{\ell} = - \overline{p} \partial_i  \overline{u}_i . 
 \end{align}
 $T_{\ell}$ is the kinetic energy expended by the large-scale flow to bend and stretch large-scale magnetic field including adiabatic compression:
 %
@@ -147,15 +147,7 @@ where $c \overline{\bm  \epsilon} \equiv \overline{\bm u \times \bm B} - \overli
 \end{align}
 %
 where $\overline{\bm J} = (c/ 4\pi) \nabla \times \overline{\bm B}$ is the large-scale electric current. Finally, $T_{\ell}$ is the same as in Eq.~\eqref{eq:large-scale-kin-en}, and represents stretching of large-scale magnetic field (Eq.~\ref{eq:largescale_mag_stretch_term}) appearing now with opposite sign.
-%\printbibliography
 
-\subsection{Internal energy}
-
-Filtering the equation for thermal pressure (Eq.~\ref{eq:thermal_pressure}) we obtain the evolution equation for the large-scale internal energy $\overline{p} / (\gamma - 1)$:
-%
-\begin{align}
-	\partial_t \left( \frac{\overline{p}}{\gamma - 1}\right) + \nabla \bcdot \left( \frac{\overline{p}}{\gamma - 1} \overline{\bm u} + \frac{\mu_2 ( p, \bm u )}{\gamma - 1} \right) = Q_{\ell} - \mu_2 (p, \nabla \bcdot \bm u).
-\end{align}
 
 \section{Small-scale evolution}
 
@@ -200,11 +192,26 @@ where $\bm f^B$ is the spatial transport of small-scale magnetic energy
 %
 and where on the right-hand side of Eq.~\eqref{eq:small-scale-mag-energy} we find as sources the subgrid scale magnetic flux $\Pi^B_{\ell}$, the small-scale stretching $S_{\ell}$, the adiabatic compression of small-scale magnetic energy by the large-scale flow $G_{\ell}$, and finally the small-scale kinetic to magnetic exchange $- \mu_2 \left( B^2/8 \pi, \nabla \bcdot \bm u \right)$.
 
+\section{Internal energy}
+
+Filtering the equation for thermal pressure (Eq.~\ref{eq:thermal_pressure}) we obtain the evolution equation for the mean internal energy $\overline{\rho e} = \overline{p} / (\gamma - 1)$:
+%
+\begin{align}\label{eq:internal_energy}
+	\partial_t \left( \frac{\overline{p}}{\gamma - 1}\right) + \nabla \bcdot \left( \frac{\overline{p}}{\gamma - 1} \overline{\bm u} + \frac{\mu_2 ( p, \bm u )}{\gamma - 1} \right) = Q_{\ell} - \mu_2 (p, \nabla \bcdot \bm u).
+\end{align}
+%
+We stress that $\overline{\rho e} = \overline{p} / (\gamma - 1)$   is \textit{not} the large-scale internal energy: indeed, integrating Eq.~\ref{eq:internal_energy} over the volume we get the total internal energy contained therein (because the operation of filtering and averaging commute). One might define $\bar{\rho} \bar{e}$ as the large-scale internal energy, and $\mu_2 (\rho, e)$ as the small-scale internal energy (such that their sum yields $\overline{\rho e}$) but (a) I have not seen it in the literature, and (b) it is not necessary for our purposes.
+
+
 \begin{figure}
 	\centering
 	\includegraphics[width=1.0\linewidth]{Figures/mhd_fluxes.png}
-	\caption{Representation of energy fluxes and transfers in ideal compressible MHD. Empty arrows represent terms solely due to compressibility.}
+	\caption{Representation of energy fluxes and transfers in ideal compressible MHD. Empty arrows represent terms solely due to compressibility. Note, however, that compressibility effects also contribute to $\Pi^K_{\ell}$, $T_{\ell}$ and $S_{\ell}$ (because of the velocity shear matrix).}
 	\label{fig:kin_pot_mag_energy}
 \end{figure}
+
+
+
+%\printbibliography
 
 \end{document}
