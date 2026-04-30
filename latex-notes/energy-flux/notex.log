@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2026/dev/Arch Linux) (preloaded format=pdflatex 2026.1.16)  26 FEB 2026 10:06
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2026/dev/Arch Linux) (preloaded format=pdflatex 2026.1.16)  4 MAR 2026 22:05
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -740,7 +740,7 @@ File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 [2]
 
 [3]
-<Figures/mhd_fluxes.png, id=100, 845.19765pt x 597.6729pt>
+<Figures/mhd_fluxes.png, id=104, 845.19765pt x 597.6729pt>
 File: Figures/mhd_fluxes.png Graphic file (type png)
 <use Figures/mhd_fluxes.png>
 Package pdftex.def Info: Figures/mhd_fluxes.png  used on input line 208.
@@ -749,22 +749,24 @@ Package pdftex.def Info: Figures/mhd_fluxes.png  used on input line 208.
 
 [4]
 
-[5 <./Figures/mhd_fluxes.png>] (./notex.aux)
+[5 <./Figures/mhd_fluxes.png>]
+
+[6] (./notex.aux)
  ***********
 LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
  ***********
 Package rerunfilecheck Info: File `notex.out' has not changed.
-(rerunfilecheck)             Checksum: D08141175DB8D5107E9CD1A6098C438D;1195.
+(rerunfilecheck)             Checksum: 20DFE7F025CDFD6A0C54EDD5D777D09E;1441.
 Package logreq Info: Writing requests to 'notex.run.xml'.
 \openout1 = `notex.run.xml'.
 
  ) 
 Here is how much of TeX's memory you used:
- 22970 strings out of 475171
- 450621 string characters out of 5767095
+ 22979 strings out of 475171
+ 450713 string characters out of 5767095
  1038559 words of memory out of 5000000
- 45699 multiletter control sequences out of 15000+600000
+ 45700 multiletter control sequences out of 15000+600000
  572564 words of font info for 86 fonts, out of 8000000 for 9000
  14 hyphenation exceptions out of 8191
  67i,11n,81p,1887b,1032s stack positions out of 10000i,1000n,20000p,200000b,200000s
@@ -781,10 +783,10 @@ nts/cm/cmr17.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb
 mf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texmf-dist/fonts/
 type1/public/amsfonts/cm/cmti10.pfb></usr/share/texmf-dist/fonts/type1/public/a
 msfonts/symbols/msbm10.pfb>
-Output written on notex.pdf (5 pages, 333371 bytes).
+Output written on notex.pdf (6 pages, 341464 bytes).
 PDF statistics:
- 192 PDF objects out of 1000 (max. 8388607)
- 151 compressed objects within 2 object streams
- 39 named destinations out of 1000 (max. 500000)
- 78 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 207 PDF objects out of 1000 (max. 8388607)
+ 165 compressed objects within 2 object streams
+ 47 named destinations out of 1000 (max. 500000)
+ 86 words of extra memory for PDF output out of 10000 (max. 10000000)
 
