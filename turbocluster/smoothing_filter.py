@@ -18,9 +18,7 @@ class SmoothingFilter:
     """
 
     def __init__(self, snap, center, widths, orientation=None, search_radius=None,
-                 npix=128, threadsperblock=256, tilingType='cartesian', numPhi=-1, 
-                 numTheta=-1, rMin=-1.0, rMax=-1.0, typeGrid='log', powerGrid=0,
-                gauss_multiplier=4):
+                 npix=128, threadsperblock=256, tilingType='cartesian',                gauss_multiplier=4):
         """
         If spherical=True, npix is the number of intervals in the radial direction
         in the phi and theta direction we have npix, and npix/2 intervals
@@ -29,6 +27,7 @@ class SmoothingFilter:
         rng0 = nvtx.start_range(message="init_smoothing")
         
         # TODO: orientation like in paicos
+        # might work now already. to be checked
         if orientation is not None:
             raise RuntimeError('not implemented')
         # if (tilingType == 'spherical'):
@@ -137,6 +136,8 @@ class SmoothingFilter:
             self.search_radius = 1.1*self.multiplier*np.array(search_radius)
 
 
+        ## This selects the region and sends
+        ## a bunch of arrays to the gpu
         # rng = nvtx.start_range(message="region_selection")
         if (tilingType == 'cartesian'):
             self._do_region_selection()
@@ -151,10 +152,9 @@ class SmoothingFilter:
             self.extra_layer_thickness_value = self.extra_layer_thickness
 
         # Create tiling
+        # need to check orientation in tiling
         if (tilingType == 'cartesian'):
-            self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'],
-                                        self.gpu_variables['widths'], self.extra_layer_thickness_value, npix=npix,
-                                        threadsperblock=threadsperblock)
+            self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'], self.gpu_variables['widths'], self.extra_layer_thickness_value, npix=npix, threadsperblock=threadsperblock, orientation=orientation)
         # elif (tilingType == 'spherical'):
         #     self.tile = SphericalTiling(self.gpu_variables['pos'], self.gpu_variables['center'],
         #                                 rMin, rMax, self.extra_layer_thickness_value,
@@ -184,9 +184,7 @@ class SmoothingFilter:
         rng = nvtx.start_range(message="region_selection")
         if self.orientation is None:
             get_index = pa.util.get_index_of_cubic_region_plus_thin_layer
-            self.indicesFirstPass = get_index(self.snap["0_Coordinates"],
-                                   center, widths, thickness,
-                                   snap.box)
+            self.indicesFirstPass = get_index(self.snap["0_Coordinates"],center, widths, thickness, snap.box)
             self.max_search_radius = np.max(self.search_radius[self.indicesFirstPass])
             thickness = self.hsml + self.max_search_radius
             self.index = get_index(self.snap["0_Coordinates"],
@@ -194,9 +192,7 @@ class SmoothingFilter:
                                    snap.box)
         else:
             get_index = pa.util.get_index_of_rotated_cubic_region_plus_thin_layer
-            self.indicesFirstPass = get_index(self.snap["0_Coordinates"],
-                                   center, widths, thickness, snap.box,
-                                   self.orientation)
+            self.indicesFirstPass = get_index(self.snap["0_Coordinates"], center, widths, thickness, snap.box, self.orientation)
             self.max_search_radius = np.max(self.search_radius[self.indicesFirstPass])
             thickness = self.hsml + self.max_search_radius
             self.index = get_index(self.snap["0_Coordinates"],
@@ -253,20 +249,24 @@ class SmoothingFilter:
         if self.orientation is not None:
             self.gpu_variables['rotation_matrix'] = cp.array(
                 self.orientation.rotation_matrix)
+            self.gpu_variables['inverse_rotation_matrix'] = cp.array(
+                self.orientation.inverse_rotation_matrix)
+            # rotate coordinates
+            self.gpu_variables['pos'] = cp.matmul(self.gpu_variables['inverse_rotation_matrix'], self.gpu_variables['pos'])
 
         if pa.settings.use_units:
             if self.cartesian: 
                 self.gpu_variables['widths'] = cp.array(self.widths.value)
-            elif self.spherical:
-                self.gpu_variables['rMin'] = cp.array(self.rMin.value)
-                self.gpu_variables['rMax'] = cp.array(self.rMax.value)
+            # elif self.spherical:
+            #     self.gpu_variables['rMin'] = cp.array(self.rMin.value)
+            #     self.gpu_variables['rMax'] = cp.array(self.rMax.value)
             self.gpu_variables['center'] = cp.array(self.center.value)
         else:
             if self.cartesian: 
                 self.gpu_variables['widths'] = cp.array(self.widths)
-            elif self.spherical:
-                self.gpu_variables['rMin'] = cp.array(self.rMin)
-                self.gpu_variables['rMax'] = cp.array(self.rMax)
+            # elif self.spherical:
+            #     self.gpu_variables['rMin'] = cp.array(self.rMin)
+            #     self.gpu_variables['rMax'] = cp.array(self.rMax)
             self.gpu_variables['center'] = cp.array(self.center)
 
     # def _apply_filter_gpu(self, variable_str, weight, filter_type, iterative):

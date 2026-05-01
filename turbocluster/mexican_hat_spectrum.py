@@ -51,47 +51,27 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
             filt_len = (np.sqrt(2.0)/k)
 
             if normalized:
-                smoothVar, turbVar = extract_turbulent_scalar(snap, self, 
-                                                          variable_orig, filt_len, 
-                                                          weight, filter_type="gaussian",
-                                                           iterative=False)
+                smoothVar, turbVar = extract_turbulent_scalar(snap, self, variable_orig, filt_len,  weight, filter_type="gaussian", iterative=False)
                 variable = turbVar/smoothVar
                 variable[~self.indicesFirstPass] = 0.0
 
             if (mask is None):
-                var_filtered, _ = extract_turbulent_scalar(snap, self, 
-                                                          variable, filt_len, 
-                                                          weight, test_type="diff_of_gaussians",
-                                                           filter_type="mexican-hat",
-                                                           iterative=False)
+                var_filtered, _ = extract_turbulent_scalar(snap, self,  variable, filt_len,  weight, test_type="diff_of_gaussians", filter_type="mexican-hat", iterative=False)
                 
-                var_variance[i] = volume_integral(snap, var_filtered**2,
-                                              self.indicesFirstPass)
+                var_variance[i] = volume_integral(snap, var_filtered**2, self.indicesFirstPass)
             else:
                 ## equation A9 Arevalo+2012
-                G_sigma1_var, _ = extract_turbulent_scalar(snap, self, 
-                                                          variable, filt_len/np.sqrt(1.0+epsilon), 
-                                                          weight, filter_type="gaussian",
-                                                           iterative=False)
+                G_sigma1_var, _ = extract_turbulent_scalar(snap, self,  variable, filt_len/np.sqrt(1.0+epsilon), weight, filter_type="gaussian", iterative=False)
                 # note that it does not matter what unit is mask
                 # because in the end it cancels out
                 # but we need a unit for the following function to work
 
                 # we use the convention that mask=1=True on the cells which we want
                 # to include, and mask=0=False on the cells to exclude
-                G_sigma1_mask, _ = extract_turbulent_scalar(snap, self, 
-                                                          mask*var_unit, filt_len/np.sqrt(1.0+epsilon), 
-                                                          weight, filter_type="gaussian",
-                                                           iterative=False)
+                G_sigma1_mask, _ = extract_turbulent_scalar(snap, self, mask*var_unit, filt_len/np.sqrt(1.0+epsilon),  weight, filter_type="gaussian", iterative=False)
 
-                G_sigma2_var, _ = extract_turbulent_scalar(snap, self, 
-                                                          variable, filt_len*np.sqrt(1.0+epsilon), 
-                                                          weight, filter_type="gaussian",
-                                                           iterative=False)
-                G_sigma2_mask, _ = extract_turbulent_scalar(snap, self, 
-                                                          mask*var_unit, filt_len*np.sqrt(1.0+epsilon), 
-                                                          weight, filter_type="gaussian",
-                                                           iterative=False)
+                G_sigma2_var, _ = extract_turbulent_scalar(snap, self,  variable, filt_len*np.sqrt(1.0+epsilon),  weight, filter_type="gaussian", iterative=False)
+                G_sigma2_mask, _ = extract_turbulent_scalar(snap, self,  mask*var_unit, filt_len*np.sqrt(1.0+epsilon),  weight, filter_type="gaussian", iterative=False)
 
                 S_k = (G_sigma1_var / G_sigma1_mask - G_sigma2_var / G_sigma2_mask ) * mask * var_unit
 
@@ -102,16 +82,12 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
                 
                 S_k /= epsilon
 
-                vol_tot = volume_integral(snap, np.ones(mask.shape),
-                                              self.indicesFirstPass)
+                vol_tot = volume_integral(snap, np.ones(mask.shape), self.indicesFirstPass)
 
-                vol_non_masked = volume_integral(snap, mask,
-                                              self.indicesFirstPass)
+                vol_non_masked = volume_integral(snap, mask,self.indicesFirstPass)
 
                 # equation A10 of Arevalo+2012
-                var_variance[i] = (vol_tot/vol_non_masked) * volume_integral(snap, 
-                                                                          S_k**2,
-                                                                          self.indicesFirstPass)
+                var_variance[i] = (vol_tot/vol_non_masked) * volume_integral(snap, S_k**2, self.indicesFirstPass)
         # equation A11 of Arevalo+2012 replacing k_r -> k / (2 \pi) 
 
         ## this is the 3D energy spectral density
@@ -154,39 +130,22 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
             filt_len = (np.sqrt(2.0)/k)
 
             if (mask is None):
-                var_filtered, _ = extract_turbulent_vector(snap, self, 
-                                                          variable, filt_len, 
-                                                          weight, test_type="diff_of_gaussians",
-                                                           filter_type="mexican-hat",
-                                                           iterative=False)
+                var_filtered, _ = extract_turbulent_vector(snap, self, variable, filt_len,  weight, test_type="diff_of_gaussians", filter_type="mexican-hat", iterative=False)
                 for n in range(variable.shape[-1]):
-                    var_variance[i, n] = volume_integral(snap, var_filtered[:,n]**2,
-                                                  self.indicesFirstPass)
+                    var_variance[i, n] = volume_integral(snap, var_filtered[:,n]**2, self.indicesFirstPass)
             else:
                 ## equation A9 Arevalo+2012
-                G_sigma1_var, _ = extract_turbulent_vector(snap, self, 
-                                                          variable, filt_len/np.sqrt(1.0+epsilon), 
-                                                          weight, filter_type="gaussian",
-                                                           iterative=False)
+                G_sigma1_var, _ = extract_turbulent_vector(snap, self,  variable, filt_len/np.sqrt(1.0+epsilon),  weight, filter_type="gaussian", iterative=False)
                 # note that it does not matter what unit is mask
                 # because in the end it cancels out
                 # but we need a unit for the following function to work
 
                 # we use the convention that mask=1=True on the cells which we want
                 # to include, and mask=0=False on the cells to exclude
-                G_sigma1_mask, _ = extract_turbulent_scalar(snap, self, 
-                                                          mask*var_unit, filt_len/np.sqrt(1.0+epsilon), 
-                                                          weight, filter_type="gaussian",
-                                                           iterative=False)
+                G_sigma1_mask, _ = extract_turbulent_scalar(snap, self,  mask*var_unit, filt_len/np.sqrt(1.0+epsilon),  weight, filter_type="gaussian", iterative=False)
 
-                G_sigma2_var, _ = extract_turbulent_vector(snap, self, 
-                                                          variable, filt_len*np.sqrt(1.0+epsilon), 
-                                                          weight, filter_type="gaussian",
-                                                           iterative=False)
-                G_sigma2_mask, _ = extract_turbulent_scalar(snap, self, 
-                                                          mask*var_unit, filt_len*np.sqrt(1.0+epsilon), 
-                                                          weight, filter_type="gaussian",
-                                                           iterative=False)
+                G_sigma2_var, _ = extract_turbulent_vector(snap, self,  variable, filt_len*np.sqrt(1.0+epsilon),  weight, filter_type="gaussian", iterative=False)
+                G_sigma2_mask, _ = extract_turbulent_scalar(snap, self,  mask*var_unit, filt_len*np.sqrt(1.0+epsilon),  weight, filter_type="gaussian", iterative=False)
 
                 for n in range(variable.shape[-1]):
                     
@@ -199,16 +158,12 @@ class MexicanHatPowerSpectrum(SmoothingFilter):
                     
                     S_k /= epsilon
     
-                    vol_tot = volume_integral(snap, np.ones(mask.shape),
-                                                  self.indicesFirstPass)
+                    vol_tot = volume_integral(snap, np.ones(mask.shape), self.indicesFirstPass)
     
-                    vol_non_masked = volume_integral(snap, mask,
-                                                  self.indicesFirstPass)
+                    vol_non_masked = volume_integral(snap, mask, self.indicesFirstPass)
     
                     # equation A10 of Arevalo+2012
-                    var_variance[i, n] = (vol_tot/vol_non_masked) * volume_integral(snap, 
-                                                                              S_k**2,
-                                                                              self.indicesFirstPass)
+                    var_variance[i, n] = (vol_tot/vol_non_masked) * volume_integral(snap, S_k**2, self.indicesFirstPass)
                 
         # equation A11 of Arevalo+2012 replacing k_r -> k / (2 \pi) 
 

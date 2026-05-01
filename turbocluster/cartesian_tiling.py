@@ -102,6 +102,9 @@ class CartesianTiling:
         self.threadsperblock = threadsperblock
 
         # Copy positions
+        # if orientation is not None:
+        #     self._pos = cp.array(np.matmul(orientation.inverse_rotation_matrix, positions))
+        # else:
         self._pos = cp.array(positions)
 
         self.tilebox_widths = widths + 2 * extra_layer_thickness
@@ -196,10 +199,7 @@ class CartesianTiling:
         threadsperblock = 256
         numBlocksFullGrid = int(self.npixs[0]*self.npixs[1]*self.npixs[2])
         blocks_1d = (numBlocksFullGrid + (threadsperblock - 1)) // threadsperblock
-        compactify_kernel[blocks_1d, threadsperblock](occupancy_arr,cumulative_occupancy, self.npixs, 
-                                                     Nmax, self.particles_per_tile.flatten(), 
-                                                     self.start_index_for_tile.flatten(), numBlocksCompactGrid, 
-                                                     compactGrid)
+        compactify_kernel[blocks_1d, threadsperblock](occupancy_arr,cumulative_occupancy, self.npixs, Nmax, self.particles_per_tile.flatten(), self.start_index_for_tile.flatten(), numBlocksCompactGrid, compactGrid)
         # compactGrid is an array of 3-tuples numBlocksCompactGrid long. 
         # for each block in numBlocksCompactGrid the 3-tuples is as follows
         # [id of the tile in the grid it refers to, id of first particle, num of particles it contains]
