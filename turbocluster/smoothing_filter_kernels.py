@@ -511,578 +511,578 @@ def apply_filter_optimized_vector(oldIndex, pos, hsml, tile_index,
                 
             
 
-@cuda.jit()
-def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
-                 variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, 
-                 filter_type, hitsNeighbours, isParticleInDomain, iterativeFilter, hasConverged, 
-                 numIterations, filter_lengths_out, multiplier, max_filter_length, isParticleInSelection):
-    """
-    filter_lengths is an array of size pos.shape([0])
-    type can be "mean" or "gaussian"
-    """
-    # threadindex
-    ip = cuda.grid(1)
+# @cuda.jit()
+# def apply_filter(pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,
+#                  variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, 
+#                  filter_type, hitsNeighbours, isParticleInDomain, iterativeFilter, hasConverged, 
+#                  numIterations, filter_lengths_out, multiplier, max_filter_length, isParticleInSelection):
+#     """
+#     filter_lengths is an array of size pos.shape([0])
+#     type can be "mean" or "gaussian"
+#     """
+#     # threadindex
+#     ip = cuda.grid(1)
 
-    # particle position
-    xp = pos[ip, 0]
-    yp = pos[ip, 1]
-    zp = pos[ip, 2]
+#     # particle position
+#     xp = pos[ip, 0]
+#     yp = pos[ip, 1]
+#     zp = pos[ip, 2]
 
-    VarRegister = variable[ip]
+#     VarRegister = variable[ip]
 
-    xmin = center[0] - widths[0] / 2 - hsml[ip]
-    xmax = center[0] + widths[0] / 2 + hsml[ip]
+#     xmin = center[0] - widths[0] / 2 - hsml[ip]
+#     xmax = center[0] + widths[0] / 2 + hsml[ip]
 
-    ymin = center[1] - widths[1] / 2 - hsml[ip]
-    ymax = center[1] + widths[1] / 2 + hsml[ip]
+#     ymin = center[1] - widths[1] / 2 - hsml[ip]
+#     ymax = center[1] + widths[1] / 2 + hsml[ip]
 
-    zmin = center[2] - widths[2] / 2 - hsml[ip]
-    zmax = center[2] + widths[2] / 2 + hsml[ip]
+#     zmin = center[2] - widths[2] / 2 - hsml[ip]
+#     zmax = center[2] + widths[2] / 2 + hsml[ip]
 
     
-    if (iterativeFilter == 0): # no iterative
-        filter_length = filter_lengths[ip]
-    else: #iterative
-        # iterative scheme ~Vazza+2012 
-        # filter length is gradually increased
-        # let's start from twice the radius
-        filter_length = 2.0 * hsml[ip] 
-        # filter_length = 0.1 * filter_lengths[ip] 
-        # if (0.1 * filter_lengths[ip] < 1.0 * hsml[ip]):  
-        #     filter_length = 1.0 * hsml[ip] 
-        # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
+#     if (iterativeFilter == 0): # no iterative
+#         filter_length = filter_lengths[ip]
+#     else: #iterative
+#         # iterative scheme ~Vazza+2012 
+#         # filter length is gradually increased
+#         # let's start from twice the radius
+#         filter_length = 2.0 * hsml[ip] 
+#         # filter_length = 0.1 * filter_lengths[ip] 
+#         # if (0.1 * filter_lengths[ip] < 1.0 * hsml[ip]):  
+#         #     filter_length = 1.0 * hsml[ip] 
+#         # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
         
-    filterIncrease = hsml[ip] # it is additive factor (?)
-    # max_filter_length = 10.0*filter_lengths[ip] 
-    # need to make sure that with max_filter_length it does not go
-    # beyond region loaded on GPU
+#     filterIncrease = hsml[ip] # it is additive factor (?)
+#     # max_filter_length = 10.0*filter_lengths[ip] 
+#     # need to make sure that with max_filter_length it does not go
+#     # beyond region loaded on GPU
     
-    hasIterationConverged = False
+#     hasIterationConverged = False
 
-    turbFieldOld = 0.0
-    turbFieldNew = 0.0
-    toleranceParam = 0.05
+#     turbFieldOld = 0.0
+#     turbFieldNew = 0.0
+#     toleranceParam = 0.05
 
-    numInteractingPartOld = 0
-    numInteractingPartNew = 0
+#     numInteractingPartOld = 0
+#     numInteractingPartNew = 0
     
 
-    sidelength_x, sidelength_y, sidelength_z = widths
-    nx, ny, nz = npixs
+#     sidelength_x, sidelength_y, sidelength_z = widths
+#     nx, ny, nz = npixs
 
-    # Check if this cell/particle is inside domain
-    inside_domain = False
-    if (xp > xmin) and (xp < xmax):
-        if (yp > ymin) and (yp < ymax):
-            if (zp > zmin) and (zp < zmax):
-                inside_domain = True
+#     # Check if this cell/particle is inside domain
+#     inside_domain = False
+#     if (xp > xmin) and (xp < xmax):
+#         if (yp > ymin) and (yp < ymax):
+#             if (zp > zmin) and (zp < zmax):
+#                 inside_domain = True
 
-    # inside_selection = True
-    # if isParticleInSelection is not None:
-    #     inside_selection = isParticleInSelection[ip]
+#     # inside_selection = True
+#     # if isParticleInSelection is not None:
+#     #     inside_selection = isParticleInSelection[ip]
 
-    if inside_domain and isParticleInSelection[ip]:
+#     if inside_domain and isParticleInSelection[ip]:
 
-        isParticleInDomain[ip] += 1
+#         isParticleInDomain[ip] += 1
 
-        ip_tile_x = tile_index[ip, 0]
-        ip_tile_y = tile_index[ip, 1]
-        ip_tile_z = tile_index[ip, 2]
+#         ip_tile_x = tile_index[ip, 0]
+#         ip_tile_y = tile_index[ip, 1]
+#         ip_tile_z = tile_index[ip, 2]
 
-        # relative coordinates w.r.t. center of tile
-        delta_x = xp - offsets[0] - (ip_tile_x + 0.5) * tile_widths[0] 
-        delta_y = yp - offsets[1] - (ip_tile_y + 0.5) * tile_widths[1] 
-        delta_z = zp - offsets[2] - (ip_tile_z + 0.5) * tile_widths[2] 
+#         # relative coordinates w.r.t. center of tile
+#         delta_x = xp - offsets[0] - (ip_tile_x + 0.5) * tile_widths[0] 
+#         delta_y = yp - offsets[1] - (ip_tile_y + 0.5) * tile_widths[1] 
+#         delta_z = zp - offsets[2] - (ip_tile_z + 0.5) * tile_widths[2] 
 
-        filter_window = 1
-        # for gaussian filter the sigma is  1/4 of the
-        # filter_length of the source particle
-        if filter_type > 0:
-            filter_window = multiplier
+#         filter_window = 1
+#         # for gaussian filter the sigma is  1/4 of the
+#         # filter_length of the source particle
+#         if filter_type > 0:
+#             filter_window = multiplier
 
-        numIter = 0
-        while (filter_length <= max_filter_length and not hasIterationConverged):
-            # the idea is to use this while loop both for iterative and non-iterative case
-            # if non-iterative we exit after one go
-            smoothVarRegister = 0.0
-            normalization = 0.0
-            weight_tmp = 0.0
-            numInteractingPartNew = 0
+#         numIter = 0
+#         while (filter_length <= max_filter_length and not hasIterationConverged):
+#             # the idea is to use this while loop both for iterative and non-iterative case
+#             # if non-iterative we exit after one go
+#             smoothVarRegister = 0.0
+#             normalization = 0.0
+#             weight_tmp = 0.0
+#             numInteractingPartNew = 0
 
-            ####################################
-            # code to check what are the tiles that can overlap
-            # with the particle filter_length
-            ####################################
+#             ####################################
+#             # code to check what are the tiles that can overlap
+#             # with the particle filter_length
+#             ####################################
             
-            ip_tile_x_min = ip_tile_x - (- delta_x + \
-                            filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
-            ip_tile_x_max = ip_tile_x + (delta_x +   \
-                            filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
+#             ip_tile_x_min = ip_tile_x - (- delta_x + \
+#                             filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
+#             ip_tile_x_max = ip_tile_x + (delta_x +   \
+#                             filter_window * filter_length + tile_widths[0] / 2) // tile_widths[0] 
         
-            ip_tile_y_min = ip_tile_y - (- delta_y + \
-                            filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
-            ip_tile_y_max = ip_tile_y + (delta_y +   \
-                            filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
+#             ip_tile_y_min = ip_tile_y - (- delta_y + \
+#                             filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
+#             ip_tile_y_max = ip_tile_y + (delta_y +   \
+#                             filter_window * filter_length + tile_widths[1] / 2) // tile_widths[1] 
         
-            ip_tile_z_min = ip_tile_z - (- delta_z + \
-                            filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
-            ip_tile_z_max = ip_tile_z + (delta_z +   \
-                            filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2]
+#             ip_tile_z_min = ip_tile_z - (- delta_z + \
+#                             filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2] 
+#             ip_tile_z_max = ip_tile_z + (delta_z +   \
+#                             filter_window * filter_length + tile_widths[2] / 2) // tile_widths[2]
 
-            ####################################
-            # end of code to check overlap
-            ####################################
+#             ####################################
+#             # end of code to check overlap
+#             ####################################
     
-            if filter_type == 0:
-                for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-                    for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-                        for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                            if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
-                                              tile_x, tile_y, tile_z,
-                                              delta_x, delta_y, delta_z,
-                                              tile_widths, filter_window * filter_length):
-                                start_index = start_index_for_tile[tile_x,
-                                                                   tile_y, tile_z]
-                                n_particles = particles_per_tile[tile_x,
-                                                                 tile_y, tile_z]
+#             if filter_type == 0:
+#                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+#                     for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+#                         for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+#                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+#                                               tile_x, tile_y, tile_z,
+#                                               delta_x, delta_y, delta_z,
+#                                               tile_widths, filter_window * filter_length):
+#                                 start_index = start_index_for_tile[tile_x,
+#                                                                    tile_y, tile_z]
+#                                 n_particles = particles_per_tile[tile_x,
+#                                                                  tile_y, tile_z]
                                 
         
-                                for ip_other in range(start_index, start_index + n_particles):
-                                    dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_window * filter_length:
-                                        # smoothing kernel
-                                        weight_tmp = sphere_kernel(dist, filter_length)
-                                        # optional weight (e.g. mass, density, ...)
-                                        weight_tmp *= weights[ip_other]
-                                        # volume of voronoi cell
-                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
-                                        # normalization of the integral
-                                        normalization += weight_tmp
-                                        smoothVarRegister += variable[ip_other] * weight_tmp
-                                        numInteractingPartNew += 1
+#                                 for ip_other in range(start_index, start_index + n_particles):
+#                                     dist = distance((xp, yp, zp), pos[ip_other])
+#                                     if dist < filter_window * filter_length:
+#                                         # smoothing kernel
+#                                         weight_tmp = sphere_kernel(dist, filter_length)
+#                                         # optional weight (e.g. mass, density, ...)
+#                                         weight_tmp *= weights[ip_other]
+#                                         # volume of voronoi cell
+#                                         weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+#                                         # normalization of the integral
+#                                         normalization += weight_tmp
+#                                         smoothVarRegister += variable[ip_other] * weight_tmp
+#                                         numInteractingPartNew += 1
     
-            elif filter_type == 1:
-                for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-                    for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-                        for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                            if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
-                                              tile_x, tile_y, tile_z,
-                                              delta_x, delta_y, delta_z,
-                                              tile_widths, filter_window * filter_length):
-                                start_index = start_index_for_tile[tile_x,
-                                                                   tile_y, tile_z]
-                                n_particles = particles_per_tile[tile_x,
-                                                                 tile_y, tile_z]
+#             elif filter_type == 1:
+#                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+#                     for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+#                         for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+#                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+#                                               tile_x, tile_y, tile_z,
+#                                               delta_x, delta_y, delta_z,
+#                                               tile_widths, filter_window * filter_length):
+#                                 start_index = start_index_for_tile[tile_x,
+#                                                                    tile_y, tile_z]
+#                                 n_particles = particles_per_tile[tile_x,
+#                                                                  tile_y, tile_z]
         
-                                for ip_other in range(start_index, start_index + n_particles):
-                                    dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_window * filter_length:
-                                        # smoothing kernel
-                                        weight_tmp = gaussian_kernel(dist, filter_length)
-                                        # optional weight (e.g. mass, density, ...)
-                                        weight_tmp *= weights[ip_other]
-                                        # volume of voronoi cell
-                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
-                                        # normalization of the integral
-                                        normalization += weight_tmp
-                                        smoothVarRegister += variable[ip_other] * weight_tmp
-                                        numInteractingPartNew += 1
+#                                 for ip_other in range(start_index, start_index + n_particles):
+#                                     dist = distance((xp, yp, zp), pos[ip_other])
+#                                     if dist < filter_window * filter_length:
+#                                         # smoothing kernel
+#                                         weight_tmp = gaussian_kernel(dist, filter_length)
+#                                         # optional weight (e.g. mass, density, ...)
+#                                         weight_tmp *= weights[ip_other]
+#                                         # volume of voronoi cell
+#                                         weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+#                                         # normalization of the integral
+#                                         normalization += weight_tmp
+#                                         smoothVarRegister += variable[ip_other] * weight_tmp
+#                                         numInteractingPartNew += 1
 
             
-            elif filter_type == 2: ## for mexican-hat filter
-                for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-                    for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-                        for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                            if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
-                                              tile_x, tile_y, tile_z,
-                                              delta_x, delta_y, delta_z,
-                                              tile_widths, filter_window * filter_length):
-                                start_index = start_index_for_tile[tile_x,
-                                                                   tile_y, tile_z]
-                                n_particles = particles_per_tile[tile_x,
-                                                                 tile_y, tile_z]
+#             elif filter_type == 2: ## for mexican-hat filter
+#                 for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+#                     for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+#                         for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+#                             if check_distance(ip_tile_x, ip_tile_y, ip_tile_z,
+#                                               tile_x, tile_y, tile_z,
+#                                               delta_x, delta_y, delta_z,
+#                                               tile_widths, filter_window * filter_length):
+#                                 start_index = start_index_for_tile[tile_x,
+#                                                                    tile_y, tile_z]
+#                                 n_particles = particles_per_tile[tile_x,
+#                                                                  tile_y, tile_z]
         
-                                for ip_other in range(start_index, start_index + n_particles):
-                                    dist = distance((xp, yp, zp), pos[ip_other])
-                                    if dist < filter_window * filter_length:
-                                        # smoothing kernel
-                                        weight_tmp = mexican_kernel(dist, filter_length)
-                                        # optional weight (e.g. mass, density, ...)
-                                        weight_tmp *= weights[ip_other]
-                                        # volume of voronoi cell
-                                        weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
-                                        # normalization of the integral
-                                        # for the mexican filter it is a bit different
-                                        # the normalization uses the sphere kernel
-                                        normalization += (weights[ip_other] *
-                                                          (4./3.)*cp.pi*hsml[ip_other]**3 *
-                                                          sphere_kernel(dist, filter_window * filter_length) )
-                                        smoothVarRegister += variable[ip_other] * weight_tmp
-                                        numInteractingPartNew += 1
+#                                 for ip_other in range(start_index, start_index + n_particles):
+#                                     dist = distance((xp, yp, zp), pos[ip_other])
+#                                     if dist < filter_window * filter_length:
+#                                         # smoothing kernel
+#                                         weight_tmp = mexican_kernel(dist, filter_length)
+#                                         # optional weight (e.g. mass, density, ...)
+#                                         weight_tmp *= weights[ip_other]
+#                                         # volume of voronoi cell
+#                                         weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+#                                         # normalization of the integral
+#                                         # for the mexican filter it is a bit different
+#                                         # the normalization uses the sphere kernel
+#                                         normalization += (weights[ip_other] *
+#                                                           (4./3.)*cp.pi*hsml[ip_other]**3 *
+#                                                           sphere_kernel(dist, filter_window * filter_length) )
+#                                         smoothVarRegister += variable[ip_other] * weight_tmp
+#                                         numInteractingPartNew += 1
                                         
 
-            smoothVarRegister /= normalization
+#             smoothVarRegister /= normalization
 
-            ################################
-            # part to check convergence of iterative filter
-            ################################
+#             ################################
+#             # part to check convergence of iterative filter
+#             ################################
             
-            if (iterativeFilter == 0): # no iterative
-                hasIterationConverged = True
-            else: # iterative
-                turbFieldNew = VarRegister - smoothVarRegister
-                increase =  math.fabs(turbFieldNew - turbFieldOld) 
-                # we declare the iteration converged when all the following are satisfied:
-                # 1. the relative increase is less than the tolerance
-                # 2. we have done at least one iteration (so we can compare old and new)
-                # 3. the number of particles at the new iteration has increased
-                # (if the number did not increase this would naturally cause 1. to be true)
-                # 4. the number of particles it interacts with is > 8 (2 per dim, arbitrary)
+#             if (iterativeFilter == 0): # no iterative
+#                 hasIterationConverged = True
+#             else: # iterative
+#                 turbFieldNew = VarRegister - smoothVarRegister
+#                 increase =  math.fabs(turbFieldNew - turbFieldOld) 
+#                 # we declare the iteration converged when all the following are satisfied:
+#                 # 1. the relative increase is less than the tolerance
+#                 # 2. we have done at least one iteration (so we can compare old and new)
+#                 # 3. the number of particles at the new iteration has increased
+#                 # (if the number did not increase this would naturally cause 1. to be true)
+#                 # 4. the number of particles it interacts with is > 8 (2 per dim, arbitrary)
             
-                if (numIter > 1) and (increase <= toleranceParam * (0.0 + math.fabs(turbFieldOld))):
-                    if (numInteractingPartNew > numInteractingPartOld):
-                        if (numInteractingPartNew > 8):
-                            hasIterationConverged = True
-                            hasConverged[ip] = 1
-                else: # not converged
-                    filter_length += filterIncrease
-                    turbFieldOld = turbFieldNew
-                    numIter += 1
-                    numInteractingPartOld = numInteractingPartNew
+#                 if (numIter > 1) and (increase <= toleranceParam * (0.0 + math.fabs(turbFieldOld))):
+#                     if (numInteractingPartNew > numInteractingPartOld):
+#                         if (numInteractingPartNew > 8):
+#                             hasIterationConverged = True
+#                             hasConverged[ip] = 1
+#                 else: # not converged
+#                     filter_length += filterIncrease
+#                     turbFieldOld = turbFieldNew
+#                     numIter += 1
+#                     numInteractingPartOld = numInteractingPartNew
 
-            ################################
-            # end of check convergence of iterative filter
-            ################################
+#             ################################
+#             # end of check convergence of iterative filter
+#             ################################
 
-        smooth_var[ip] = smoothVarRegister
-        hitsNeighbours[ip] = numInteractingPartNew
-        if (iterativeFilter == 1): # iterative
-            filter_lengths_out[ip] = filter_length
-            numIterations[ip] = numIter
-            if not hasIterationConverged:
-                # this is to adjust for the last iteration
-                filter_lengths_out[ip] -= filterIncrease
-                numIterations[ip] -= 1
+#         smooth_var[ip] = smoothVarRegister
+#         hitsNeighbours[ip] = numInteractingPartNew
+#         if (iterativeFilter == 1): # iterative
+#             filter_lengths_out[ip] = filter_length
+#             numIterations[ip] = numIter
+#             if not hasIterationConverged:
+#                 # this is to adjust for the last iteration
+#                 filter_lengths_out[ip] -= filterIncrease
+#                 numIterations[ip] -= 1
 
-@cuda.jit()
-def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
-                           particles_per_tile, spacings,
-                           variable, weights, nSects, center, rMin, rMax, 
-                           _rMin, _rMax, filter_lengths, smooth_var, filter_type, 
-                            hitsNeighbours, isParticleInDomain, typeGrid, power, 
-                           iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier,
-                          max_filter_length, isParticleInSelection):
-    """
-    filter_lengths is an array of size pos.shape([0])
-    type can be "mean" or "gaussian"
-    rMin, rMax are the domain computational boundaries
-    chosen by the user
-    _rMin, _rMax are the lower and upper limits of 
-    the radial grid (computed by SphericalTiling)
-    _rMin < rMin (not exactly...)
-    _rMax > rMax
-    """
-    # threadindex
-    ip = cuda.grid(1)
+# @cuda.jit()
+# def apply_filter_spherical(pos, hsml, tile_index, start_index_for_tile,
+#                            particles_per_tile, spacings,
+#                            variable, weights, nSects, center, rMin, rMax, 
+#                            _rMin, _rMax, filter_lengths, smooth_var, filter_type, 
+#                             hitsNeighbours, isParticleInDomain, typeGrid, power, 
+#                            iterativeFilter, hasConverged, numIterations, filter_lengths_out, multiplier,
+#                           max_filter_length, isParticleInSelection):
+#     """
+#     filter_lengths is an array of size pos.shape([0])
+#     type can be "mean" or "gaussian"
+#     rMin, rMax are the domain computational boundaries
+#     chosen by the user
+#     _rMin, _rMax are the lower and upper limits of 
+#     the radial grid (computed by SphericalTiling)
+#     _rMin < rMin (not exactly...)
+#     _rMax > rMax
+#     """
+#     # threadindex
+#     ip = cuda.grid(1)
 
-    # particle position
-    xp = pos[ip, 0]
-    yp = pos[ip, 1]
-    zp = pos[ip, 2]
+#     # particle position
+#     xp = pos[ip, 0]
+#     yp = pos[ip, 1]
+#     zp = pos[ip, 2]
 
-    VarRegister = variable[ip]
+#     VarRegister = variable[ip]
 
-    rad2 = (xp - center[0])**2 + \
-           (yp - center[1])**2 + \
-           (zp - center[2])**2
+#     rad2 = (xp - center[0])**2 + \
+#            (yp - center[1])**2 + \
+#            (zp - center[2])**2
 
-    rp = math.sqrt(rad2)
-    phi = math.atan2(yp - center[1], xp - center[0]) % (2.0*math.pi)
-    theta = math.acos( (zp - center[2]) / rp)
-    #cylindrical radius
-    cylRadius = rp * math.sin(theta)
+#     rp = math.sqrt(rad2)
+#     phi = math.atan2(yp - center[1], xp - center[0]) % (2.0*math.pi)
+#     theta = math.acos( (zp - center[2]) / rp)
+#     #cylindrical radius
+#     cylRadius = rp * math.sin(theta)
     
-    if (rMin > hsml[ip]):
-        rad2Min = (rMin - hsml[ip])**2
-    else:
-        rad2Min = 0.0
-    rad2Max = (rMax + hsml[ip])**2
+#     if (rMin > hsml[ip]):
+#         rad2Min = (rMin - hsml[ip])**2
+#     else:
+#         rad2Min = 0.0
+#     rad2Max = (rMax + hsml[ip])**2
 
-    # Check if this cell/particle is inside domain
-    inside_domain = False
-    if (rad2 > rad2Min) and (rad2 < rad2Max):
-        inside_domain = True
+#     # Check if this cell/particle is inside domain
+#     inside_domain = False
+#     if (rad2 > rad2Min) and (rad2 < rad2Max):
+#         inside_domain = True
 
-    if (iterativeFilter == 0): # no iterative
-        filter_length = filter_lengths[ip]
-    else: #iterative
-        # iterative scheme ~Vazza+2012
-        # filter length is gradually increased
-        filter_length = 2.0 * hsml[ip]
-        # filter_length = 0.1 * filter_lengths[ip]
-        # if (0.1 * filter_lengths[ip] < 1.0 * hsml[ip]):
-        #     filter_length = 1.0 * hsml[ip]
-        # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
+#     if (iterativeFilter == 0): # no iterative
+#         filter_length = filter_lengths[ip]
+#     else: #iterative
+#         # iterative scheme ~Vazza+2012
+#         # filter length is gradually increased
+#         filter_length = 2.0 * hsml[ip]
+#         # filter_length = 0.1 * filter_lengths[ip]
+#         # if (0.1 * filter_lengths[ip] < 1.0 * hsml[ip]):
+#         #     filter_length = 1.0 * hsml[ip]
+#         # let's start from 10% of the filter_length or 1 x hsml, whichever is largest
 
-    filterIncrease = hsml[ip] # it is additive factor (?)
-    # max_filter_length = 10.0*filter_lengths[ip]
-    # need to make sure that with max_filter_length it does not go
-    # beyond region loaded on GPU
+#     filterIncrease = hsml[ip] # it is additive factor (?)
+#     # max_filter_length = 10.0*filter_lengths[ip]
+#     # need to make sure that with max_filter_length it does not go
+#     # beyond region loaded on GPU
 
-    hasIterationConverged = False
+#     hasIterationConverged = False
 
-    turbFieldOld = 0.0
-    turbFieldNew = 0.0
-    toleranceParam = 0.05
+#     turbFieldOld = 0.0
+#     turbFieldNew = 0.0
+#     toleranceParam = 0.05
 
-    numInteractingPartOld = 0
-    numInteractingPartNew = 0
+#     numInteractingPartOld = 0
+#     numInteractingPartNew = 0
 
-    radSpacing, phiSpacing, theSpacing = spacings
-    nSectRad, nSectPhi, nSectThe = nSects
-    nSectRad = int(nSectRad)
-    nSectPhi = int(nSectPhi)
-    nSectThe = int(nSectThe)
+#     radSpacing, phiSpacing, theSpacing = spacings
+#     nSectRad, nSectPhi, nSectThe = nSects
+#     nSectRad = int(nSectRad)
+#     nSectPhi = int(nSectPhi)
+#     nSectThe = int(nSectThe)
     
-    # inside_selection = True
-    # if isParticleInSelection is not None:
-    #     inside_selection = isParticleInSelection[ip]
+#     # inside_selection = True
+#     # if isParticleInSelection is not None:
+#     #     inside_selection = isParticleInSelection[ip]
 
-    if inside_domain and isParticleInSelection[ip]:
+#     if inside_domain and isParticleInSelection[ip]:
         
-        isParticleInDomain[ip] += 1
+#         isParticleInDomain[ip] += 1
 
-        ip_tile_rad = tile_index[ip, 0]
-        ip_tile_phi = tile_index[ip, 1]
-        ip_tile_the = tile_index[ip, 2]
+#         ip_tile_rad = tile_index[ip, 0]
+#         ip_tile_phi = tile_index[ip, 1]
+#         ip_tile_the = tile_index[ip, 2]
 
-        filter_window = 1
-        # for gaussian filter the sigma is  1/4 of the
-        # filter_length of the source particle
-        if filter_type > 0:
-            filter_window = multiplier
+#         filter_window = 1
+#         # for gaussian filter the sigma is  1/4 of the
+#         # filter_length of the source particle
+#         if filter_type > 0:
+#             filter_window = multiplier
 
-        numIter = 0
-        while (filter_length <= max_filter_length and not hasIterationConverged):
-            # the idea is to use this while loop both for iterative and non-iterative case
-            # if non-iterative we exit after one go
-            smoothVarRegister = 0.0
-            normalization = 0.0
-            weight_tmp = 0.0
-            numInteractingPartNew = 0
+#         numIter = 0
+#         while (filter_length <= max_filter_length and not hasIterationConverged):
+#             # the idea is to use this while loop both for iterative and non-iterative case
+#             # if non-iterative we exit after one go
+#             smoothVarRegister = 0.0
+#             normalization = 0.0
+#             weight_tmp = 0.0
+#             numInteractingPartNew = 0
 
-            ####################################
-            # code to check what are the tiles that can overlap
-            # with the particle filter_length
-            ####################################
+#             ####################################
+#             # code to check what are the tiles that can overlap
+#             # with the particle filter_length
+#             ####################################
             
-            # when the particle is far away from the z axis so that the filter
-            # search radius does not overlap with it
-            if (filter_window * filter_length < cylRadius):
-                delta_phi = math.asin((filter_window * filter_length) / cylRadius)
-                # tricky situations: 
-                # 1: when phi - delta_phi < 0 or
-                # 2: phi + delta_phi > 2 \pi
-                # case 1: ip_tile_ip_min is negative (but with the 
-                # appropriate value) and the range( , ) works as intended
-                ip_tile_phi_min = int((phi - delta_phi) // phiSpacing)
-                # case 2: we shift both phi_min and phi_max to the 
-                # interval [-ip_tile_phi_min - numSectPhi (<0), 
-                # ip_tile_phi_max - numSectPhi]
-                # This leads back to case 1.
-                ip_tile_phi_max = int((phi + delta_phi) // phiSpacing)
-                if (phi + delta_phi > 2.0*math.pi):
-                    ip_tile_phi_min -= nSectPhi
-                    ip_tile_phi_max -= nSectPhi
+#             # when the particle is far away from the z axis so that the filter
+#             # search radius does not overlap with it
+#             if (filter_window * filter_length < cylRadius):
+#                 delta_phi = math.asin((filter_window * filter_length) / cylRadius)
+#                 # tricky situations: 
+#                 # 1: when phi - delta_phi < 0 or
+#                 # 2: phi + delta_phi > 2 \pi
+#                 # case 1: ip_tile_ip_min is negative (but with the 
+#                 # appropriate value) and the range( , ) works as intended
+#                 ip_tile_phi_min = int((phi - delta_phi) // phiSpacing)
+#                 # case 2: we shift both phi_min and phi_max to the 
+#                 # interval [-ip_tile_phi_min - numSectPhi (<0), 
+#                 # ip_tile_phi_max - numSectPhi]
+#                 # This leads back to case 1.
+#                 ip_tile_phi_max = int((phi + delta_phi) // phiSpacing)
+#                 if (phi + delta_phi > 2.0*math.pi):
+#                     ip_tile_phi_min -= nSectPhi
+#                     ip_tile_phi_max -= nSectPhi
     
-                delta_theta = math.asin((filter_window * filter_length) / rp)
-                # when filter_window * filter_length < cylRadius
-                # theta +/- delta_theta is always well-behaved
-                ip_tile_the_min = int((theta - delta_theta) // theSpacing)
-                ip_tile_the_max = int((theta + delta_theta) // theSpacing)            
-            # when the particle search radius overlaps with z axis
-            # (cylRadius < filter_window * filter_length)
-            else:
-                # need to search all the azimuthal sectors
-                ip_tile_phi_min = 0
-                ip_tile_phi_max = nSectPhi - 1
-                # regarding latitudinal range, three cases:
-                # case 1. particle+search radius is entirely in z>0 midplane
-                # case 2. particle+search radius is entirely in z<0 midplane
-                # case 3. particle+search radius overlaps with origin 
-                # for case 3. the latitudinal tiles go from 0 to nSectThe -1
-                ip_tile_the_min = 0
-                ip_tile_the_max = nSectThe - 1
-                if (( zp - center[2] ) > filter_window * filter_length):
-                    # case 1. search latitudinal tiles from 0 to ip_tile_the_max
-                    delta_theta = math.asin((filter_window * filter_length) / rp)
-                    ip_tile_the_max = int((theta + delta_theta) // theSpacing)
-                elif (- (zp - center[2]) > filter_window * filter_length):
-                    delta_theta = math.asin((filter_window * filter_length) / rp)
-                    ip_tile_the_min = int((theta - delta_theta) // theSpacing)
-                    # case 2. search latitudinal tiles from ip_tile_the_min
-                    # to nSectThe - 1
+#                 delta_theta = math.asin((filter_window * filter_length) / rp)
+#                 # when filter_window * filter_length < cylRadius
+#                 # theta +/- delta_theta is always well-behaved
+#                 ip_tile_the_min = int((theta - delta_theta) // theSpacing)
+#                 ip_tile_the_max = int((theta + delta_theta) // theSpacing)            
+#             # when the particle search radius overlaps with z axis
+#             # (cylRadius < filter_window * filter_length)
+#             else:
+#                 # need to search all the azimuthal sectors
+#                 ip_tile_phi_min = 0
+#                 ip_tile_phi_max = nSectPhi - 1
+#                 # regarding latitudinal range, three cases:
+#                 # case 1. particle+search radius is entirely in z>0 midplane
+#                 # case 2. particle+search radius is entirely in z<0 midplane
+#                 # case 3. particle+search radius overlaps with origin 
+#                 # for case 3. the latitudinal tiles go from 0 to nSectThe -1
+#                 ip_tile_the_min = 0
+#                 ip_tile_the_max = nSectThe - 1
+#                 if (( zp - center[2] ) > filter_window * filter_length):
+#                     # case 1. search latitudinal tiles from 0 to ip_tile_the_max
+#                     delta_theta = math.asin((filter_window * filter_length) / rp)
+#                     ip_tile_the_max = int((theta + delta_theta) // theSpacing)
+#                 elif (- (zp - center[2]) > filter_window * filter_length):
+#                     delta_theta = math.asin((filter_window * filter_length) / rp)
+#                     ip_tile_the_min = int((theta - delta_theta) // theSpacing)
+#                     # case 2. search latitudinal tiles from ip_tile_the_min
+#                     # to nSectThe - 1
                 
-            # the radial tile range selection actually is in 
-            # common for both cases 
-            # when filter_window * filter_length < cylRadius
-            # and when filter_window * filter_length >= cylRadius
-            # we have two cases: 
-            # case 1. the ball overlaps with the origin
-            # case 2. the ball does not overlap with the origin
-            # both can be covered by the following
-            delta_rad = filter_window * filter_length
-            ip_tile_rad_min = 0
-            if (rp - delta_rad > _rMin):
-                # ip_tile_rad_min = int((math.log10(rp - delta_rad) - \
-                #                    math.log10(_rMin) ) // radSpacing)
-                ip_tile_rad_min = find_tile_radial(rp - delta_rad, radSpacing, _rMin, _rMax, typeGrid, power)
-            # ip_tile_rad_max = int((math.log10(rp + delta_rad) - \
-            #                    math.log10(_rMin) ) // radSpacing)
-            ip_tile_rad_max = find_tile_radial(rp + delta_rad, radSpacing, _rMin, _rMax, typeGrid, power)
+#             # the radial tile range selection actually is in 
+#             # common for both cases 
+#             # when filter_window * filter_length < cylRadius
+#             # and when filter_window * filter_length >= cylRadius
+#             # we have two cases: 
+#             # case 1. the ball overlaps with the origin
+#             # case 2. the ball does not overlap with the origin
+#             # both can be covered by the following
+#             delta_rad = filter_window * filter_length
+#             ip_tile_rad_min = 0
+#             if (rp - delta_rad > _rMin):
+#                 # ip_tile_rad_min = int((math.log10(rp - delta_rad) - \
+#                 #                    math.log10(_rMin) ) // radSpacing)
+#                 ip_tile_rad_min = find_tile_radial(rp - delta_rad, radSpacing, _rMin, _rMax, typeGrid, power)
+#             # ip_tile_rad_max = int((math.log10(rp + delta_rad) - \
+#             #                    math.log10(_rMin) ) // radSpacing)
+#             ip_tile_rad_max = find_tile_radial(rp + delta_rad, radSpacing, _rMin, _rMax, typeGrid, power)
 
-            ####################################
-            # end of code to check overlap
-            ####################################
+#             ####################################
+#             # end of code to check overlap
+#             ####################################
             
-            if filter_type == 0:
-                for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
-                    for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
-                        for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
+#             if filter_type == 0:
+#                 for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
+#                     for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
+#                         for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
     
-                            start_index = int(start_index_for_tile[tile_rad,
-                                                               tile_phi, tile_the])
-                            n_particles = int(particles_per_tile[tile_rad,
-                                                               tile_phi, tile_the])
+#                             start_index = int(start_index_for_tile[tile_rad,
+#                                                                tile_phi, tile_the])
+#                             n_particles = int(particles_per_tile[tile_rad,
+#                                                                tile_phi, tile_the])
     
-                            for ip_other in range(start_index, start_index + n_particles):
-                                dist = distance((xp, yp, zp), pos[ip_other])
-                                if dist < filter_window * filter_length:
-                                    # smoothing kernel
-                                    weight_tmp = sphere_kernel(dist, filter_length)
-                                    # optional weight (e.g. mass, density, ...)
-                                    weight_tmp *= weights[ip_other]
-                                    # volume of voronoi cell
-                                    weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
-                                    # normalization of the integral
-                                    normalization += weight_tmp
-                                    smoothVarRegister += variable[ip_other] * weight_tmp
-                                    numInteractingPartNew += 1
+#                             for ip_other in range(start_index, start_index + n_particles):
+#                                 dist = distance((xp, yp, zp), pos[ip_other])
+#                                 if dist < filter_window * filter_length:
+#                                     # smoothing kernel
+#                                     weight_tmp = sphere_kernel(dist, filter_length)
+#                                     # optional weight (e.g. mass, density, ...)
+#                                     weight_tmp *= weights[ip_other]
+#                                     # volume of voronoi cell
+#                                     weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+#                                     # normalization of the integral
+#                                     normalization += weight_tmp
+#                                     smoothVarRegister += variable[ip_other] * weight_tmp
+#                                     numInteractingPartNew += 1
                 
     
-            elif filter_type == 1:
-                for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
-                    for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
-                        for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
+#             elif filter_type == 1:
+#                 for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
+#                     for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
+#                         for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
     
-                            start_index = int(start_index_for_tile[tile_rad,
-                                                               tile_phi, tile_the])
-                            n_particles = int(particles_per_tile[tile_rad,
-                                                               tile_phi, tile_the])
+#                             start_index = int(start_index_for_tile[tile_rad,
+#                                                                tile_phi, tile_the])
+#                             n_particles = int(particles_per_tile[tile_rad,
+#                                                                tile_phi, tile_the])
     
-                            for ip_other in range(start_index, start_index + n_particles):
-                                dist = distance((xp, yp, zp), pos[ip_other])
-                                if dist < filter_window * filter_length:
-                                    # smoothing kernel
-                                    weight_tmp = gaussian_kernel(dist, filter_length )
-                                    # optional weight (e.g. mass, density, ...)
-                                    weight_tmp *= weights[ip_other]
-                                    # volume of voronoi cell
-                                    weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
-                                    # normalization of the integral
-                                    normalization += weight_tmp
-                                    smoothVarRegister += variable[ip_other] * weight_tmp
-                                    numInteractingPartNew += 1
+#                             for ip_other in range(start_index, start_index + n_particles):
+#                                 dist = distance((xp, yp, zp), pos[ip_other])
+#                                 if dist < filter_window * filter_length:
+#                                     # smoothing kernel
+#                                     weight_tmp = gaussian_kernel(dist, filter_length )
+#                                     # optional weight (e.g. mass, density, ...)
+#                                     weight_tmp *= weights[ip_other]
+#                                     # volume of voronoi cell
+#                                     weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+#                                     # normalization of the integral
+#                                     normalization += weight_tmp
+#                                     smoothVarRegister += variable[ip_other] * weight_tmp
+#                                     numInteractingPartNew += 1
             
 
-            elif filter_type == 2: ## for mexican-hat filter
-                for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
-                    for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
-                        for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
+#             elif filter_type == 2: ## for mexican-hat filter
+#                 for tile_rad in range(ip_tile_rad_min, ip_tile_rad_max + 1):
+#                     for tile_phi in range(ip_tile_phi_min, ip_tile_phi_max + 1):
+#                         for tile_the in range(ip_tile_the_min, ip_tile_the_max + 1):
     
-                            start_index = int(start_index_for_tile[tile_rad,
-                                                               tile_phi, tile_the])
-                            n_particles = int(particles_per_tile[tile_rad,
-                                                               tile_phi, tile_the])
+#                             start_index = int(start_index_for_tile[tile_rad,
+#                                                                tile_phi, tile_the])
+#                             n_particles = int(particles_per_tile[tile_rad,
+#                                                                tile_phi, tile_the])
     
-                            for ip_other in range(start_index, start_index + n_particles):
-                                dist = distance((xp, yp, zp), pos[ip_other])
-                                if dist < filter_window * filter_length:
-                                    # smoothing kernel
-                                    weight_tmp = mexican_kernel(dist, filter_length)
-                                    # optional weight (e.g. mass, density, ...)
-                                    weight_tmp *= weights[ip_other]
-                                    # volume of voronoi cell
-                                    weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
-                                    # normalization of the integral
-                                    # for the mexican filter it is a bit different
-                                    # the normalization uses the sphere kernel
-                                    normalization += (weights[ip_other] *
-                                                      (4./3.)*cp.pi*hsml[ip_other]**3 *
-                                                    sphere_kernel(dist, filter_window * filter_length) )
-                                    smoothVarRegister += variable[ip_other] * weight_tmp
-                                    numInteractingPartNew += 1
+#                             for ip_other in range(start_index, start_index + n_particles):
+#                                 dist = distance((xp, yp, zp), pos[ip_other])
+#                                 if dist < filter_window * filter_length:
+#                                     # smoothing kernel
+#                                     weight_tmp = mexican_kernel(dist, filter_length)
+#                                     # optional weight (e.g. mass, density, ...)
+#                                     weight_tmp *= weights[ip_other]
+#                                     # volume of voronoi cell
+#                                     weight_tmp *= (4./3.)*cp.pi*hsml[ip_other]**3
+#                                     # normalization of the integral
+#                                     # for the mexican filter it is a bit different
+#                                     # the normalization uses the sphere kernel
+#                                     normalization += (weights[ip_other] *
+#                                                       (4./3.)*cp.pi*hsml[ip_other]**3 *
+#                                                     sphere_kernel(dist, filter_window * filter_length) )
+#                                     smoothVarRegister += variable[ip_other] * weight_tmp
+#                                     numInteractingPartNew += 1
 
 
-            smoothVarRegister /= normalization
+#             smoothVarRegister /= normalization
 
-            ################################
-            # part to check convergence of iterative filter
-            ################################
+#             ################################
+#             # part to check convergence of iterative filter
+#             ################################
             
-            if (iterativeFilter == 0): # no iterative
-                hasIterationConverged = True
-            else: # iterative
-                turbFieldNew = VarRegister - smoothVarRegister
-                increase =  math.fabs(turbFieldNew - turbFieldOld) 
-                # we declare the iteration converged when all the following are satisfied:
-                # 1. the relative increase is less than the tolerance
-                # 2. we have done at least one iteration (so we can compare old and new)
-                # 3. the number of particles at the new iteration has increased
-                # (if the number did not increase this would naturally cause 1. to be true)
-                # 4. the number of particles it interacts with is > 8 (2 per dim, arbitrary)
+#             if (iterativeFilter == 0): # no iterative
+#                 hasIterationConverged = True
+#             else: # iterative
+#                 turbFieldNew = VarRegister - smoothVarRegister
+#                 increase =  math.fabs(turbFieldNew - turbFieldOld) 
+#                 # we declare the iteration converged when all the following are satisfied:
+#                 # 1. the relative increase is less than the tolerance
+#                 # 2. we have done at least one iteration (so we can compare old and new)
+#                 # 3. the number of particles at the new iteration has increased
+#                 # (if the number did not increase this would naturally cause 1. to be true)
+#                 # 4. the number of particles it interacts with is > 8 (2 per dim, arbitrary)
                 
-                if (numIter > 1) and (increase <= toleranceParam * (0.0 + math.fabs(turbFieldOld))):
-                    if (numInteractingPartNew > numInteractingPartOld):
-                        if (numInteractingPartNew > 8):
-                            hasIterationConverged = True
-                            hasConverged[ip] = 1
-                else: # not converged
-                    filter_length += filterIncrease
-                    turbFieldOld = turbFieldNew
-                    numIter += 1
-                    numInteractingPartOld = numInteractingPartNew
+#                 if (numIter > 1) and (increase <= toleranceParam * (0.0 + math.fabs(turbFieldOld))):
+#                     if (numInteractingPartNew > numInteractingPartOld):
+#                         if (numInteractingPartNew > 8):
+#                             hasIterationConverged = True
+#                             hasConverged[ip] = 1
+#                 else: # not converged
+#                     filter_length += filterIncrease
+#                     turbFieldOld = turbFieldNew
+#                     numIter += 1
+#                     numInteractingPartOld = numInteractingPartNew
 
-            ################################
-            # end of check convergence of iterative filter
-            ################################
+#             ################################
+#             # end of check convergence of iterative filter
+#             ################################
 
-        smooth_var[ip] = smoothVarRegister
-        hitsNeighbours[ip] = numInteractingPartNew
-        if (iterativeFilter == 1): # iterative
-            filter_lengths_out[ip] = filter_length
-            numIterations[ip] = numIter
-            if not hasIterationConverged:
-                # this is to adjust for the last iteration
-                filter_lengths_out[ip] -= filterIncrease
-                numIterations[ip] -= 1
+#         smooth_var[ip] = smoothVarRegister
+#         hitsNeighbours[ip] = numInteractingPartNew
+#         if (iterativeFilter == 1): # iterative
+#             filter_lengths_out[ip] = filter_length
+#             numIterations[ip] = numIter
+#             if not hasIterationConverged:
+#                 # this is to adjust for the last iteration
+#                 filter_lengths_out[ip] -= filterIncrease
+#                 numIterations[ip] -= 1
 
 
-@cuda.jit(device=True, inline=True)
-def find_tile_radial(particle_R, radSpacing, rMin, rMax, type, power):
-    """
-    rMin include the extra thickness (_rMin)
-    rMax include the extra thickness (_rMax)
-    type = 0 is log
-    type = 1 is power law with "power" exponent
-    """
-    radTileIndex = 0
-    if (type == 0):
-        if (particle_R > rMin):
-            radTileIndex = (math.log10(particle_R) - math.log10(rMin) ) // radSpacing
-    elif (type == 1):
-        radTileIndex = ( (particle_R - rMin)/(rMax - rMin) )**power // radSpacing
-    return int(radTileIndex)
+# @cuda.jit(device=True, inline=True)
+# def find_tile_radial(particle_R, radSpacing, rMin, rMax, type, power):
+#     """
+#     rMin include the extra thickness (_rMin)
+#     rMax include the extra thickness (_rMax)
+#     type = 0 is log
+#     type = 1 is power law with "power" exponent
+#     """
+#     radTileIndex = 0
+#     if (type == 0):
+#         if (particle_R > rMin):
+#             radTileIndex = (math.log10(particle_R) - math.log10(rMin) ) // radSpacing
+#     elif (type == 1):
+#         radTileIndex = ( (particle_R - rMin)/(rMax - rMin) )**power // radSpacing
+#     return int(radTileIndex)
 
 @cuda.jit()
 def compute_max_hsml(hsml,compactGrid,maxHsmlPerBlock):
@@ -1150,313 +1150,313 @@ def compactify_in_domain(fullCompactGrid, cumulative_occupancy, isBlockInDomain,
         
 
 
-@cuda.jit()
-def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile, 
-                        particles_per_tile, tile_widths, variable, weights, center, 
-                        widths, npixs, filter_lengths, smooth_var, filter_type, 
-                        hitsNeighbours, isParticleInDomain, multiplier):
-    """
-    filter_lengths is an array of size pos.shape([0])
-    type can be "mean" or "gaussian"
-    """
-    # threadindex (absolute position within all blocks) equal to cuda.threadIdx.x + cuda.blockIdx.x * cuda.blockDim.x
-    ipAbs = cuda.grid(1)
-    # relative position of thread in a block
-    threadId = cuda.threadIdx.x
-    # block id
-    blockId = cuda.blockIdx.x
-    # num threads in the Block
-    numThreads = cuda.blockDim.x
+# @cuda.jit()
+# def apply_filter_shared(compactGrid, pos, hsml, tile_index, start_index_for_tile, 
+#                         particles_per_tile, tile_widths, variable, weights, center, 
+#                         widths, npixs, filter_lengths, smooth_var, filter_type, 
+#                         hitsNeighbours, isParticleInDomain, multiplier):
+#     """
+#     filter_lengths is an array of size pos.shape([0])
+#     type can be "mean" or "gaussian"
+#     """
+#     # threadindex (absolute position within all blocks) equal to cuda.threadIdx.x + cuda.blockIdx.x * cuda.blockDim.x
+#     ipAbs = cuda.grid(1)
+#     # relative position of thread in a block
+#     threadId = cuda.threadIdx.x
+#     # block id
+#     blockId = cuda.blockIdx.x
+#     # num threads in the Block
+#     numThreads = cuda.blockDim.x
 
-    center_x, center_y, center_z = center
-    widths_x, widths_y, widths_z = widths
-    tile_widths_x, tile_widths_y, tile_widths_z = tile_widths
-    nx, ny, nz = npixs
+#     center_x, center_y, center_z = center
+#     widths_x, widths_y, widths_z = widths
+#     tile_widths_x, tile_widths_y, tile_widths_z = tile_widths
+#     nx, ny, nz = npixs
 
-    # id (3D) of block: which is the original tile of the
-    # cartesian grid it refers to. 
-    # blockID3D = blockID_z + nz * (blockID_y + ny * blockID_x)
-    blockID3D = compactGrid[blockId, 0]
-    # starting index of the particle in this block
-    startIdxBlock = compactGrid[blockId, 1]
-    # how many particles are there in the block
-    numParticlesOwnBlock = compactGrid[blockId, 2]
+#     # id (3D) of block: which is the original tile of the
+#     # cartesian grid it refers to. 
+#     # blockID3D = blockID_z + nz * (blockID_y + ny * blockID_x)
+#     blockID3D = compactGrid[blockId, 0]
+#     # starting index of the particle in this block
+#     startIdxBlock = compactGrid[blockId, 1]
+#     # how many particles are there in the block
+#     numParticlesOwnBlock = compactGrid[blockId, 2]
     
-    # blockID_z = blockID3D % int(nz)
-    # new_id = int((blockID3D - blockID_z)/int(nz))
-    # blockID_y = new_id % int(ny)
-    # blockID_x = new_id // int(ny)
+#     # blockID_z = blockID3D % int(nz)
+#     # new_id = int((blockID3D - blockID_z)/int(nz))
+#     # blockID_y = new_id % int(ny)
+#     # blockID_x = new_id // int(ny)
 
-    ipTile_x, ipTile_y, ipTile_z = tile_index[startIdxBlock]
+#     ipTile_x, ipTile_y, ipTile_z = tile_index[startIdxBlock]
 
-    # find all the particles from neighbouring tiles that may overlap
-    # with those in this block
+#     # find all the particles from neighbouring tiles that may overlap
+#     # with those in this block
 
-    # I need a maxFilterLength per block in order to establish
-    # all overlapping neighbouring tiles
-    maxFilterLength = cuda.shared.array(1, dtype="float64")
-    if threadId == 0:
-        maxFilterLength[0] = 0.0
-    cuda.syncthreads()
-    # do some kind of atomic add using all available threads
-    if (threadId < numParticlesOwnBlock):
-        idParticle = startIdxBlock + threadId
-        cuda.atomic.max(maxFilterLength, 0, multiplier * filter_lengths[idParticle])
+#     # I need a maxFilterLength per block in order to establish
+#     # all overlapping neighbouring tiles
+#     maxFilterLength = cuda.shared.array(1, dtype="float64")
+#     if threadId == 0:
+#         maxFilterLength[0] = 0.0
+#     cuda.syncthreads()
+#     # do some kind of atomic add using all available threads
+#     if (threadId < numParticlesOwnBlock):
+#         idParticle = startIdxBlock + threadId
+#         cuda.atomic.max(maxFilterLength, 0, multiplier * filter_lengths[idParticle])
 
-    cuda.syncthreads()
-    maxFilterLength = maxFilterLength.item()
+#     cuda.syncthreads()
+#     maxFilterLength = maxFilterLength.item()
 
-    filter_window = 1
-    # for gaussian filter the sigma is  1/4 of the
-    # filter_length of the source particle
-    if filter_type > 0:
-        filter_window = multiplier
+#     filter_window = 1
+#     # for gaussian filter the sigma is  1/4 of the
+#     # filter_length of the source particle
+#     if filter_type > 0:
+#         filter_window = multiplier
 
-    ip_tile_x_min = ipTile_x - \
-        int((maxFilterLength) / tile_widths_x + 1)
-    ip_tile_x_max = ipTile_x + \
-        int((maxFilterLength) / tile_widths_x + 1)
+#     ip_tile_x_min = ipTile_x - \
+#         int((maxFilterLength) / tile_widths_x + 1)
+#     ip_tile_x_max = ipTile_x + \
+#         int((maxFilterLength) / tile_widths_x + 1)
 
-    ip_tile_y_min = ipTile_y - \
-        int((maxFilterLength) / tile_widths_y + 1)
-    ip_tile_y_max = ipTile_y + \
-        int((maxFilterLength) / tile_widths_y + 1)
+#     ip_tile_y_min = ipTile_y - \
+#         int((maxFilterLength) / tile_widths_y + 1)
+#     ip_tile_y_max = ipTile_y + \
+#         int((maxFilterLength) / tile_widths_y + 1)
 
-    ip_tile_z_min = ipTile_z - \
-        int((maxFilterLength) / tile_widths_z + 1)
-    ip_tile_z_max = ipTile_z + \
-        int((maxFilterLength) / tile_widths_z + 1)
+#     ip_tile_z_min = ipTile_z - \
+#         int((maxFilterLength) / tile_widths_z + 1)
+#     ip_tile_z_max = ipTile_z + \
+#         int((maxFilterLength) / tile_widths_z + 1)
 
-    numTotalNeighbours = int((ip_tile_x_max - ip_tile_x_min) * \
-                         (ip_tile_y_max - ip_tile_y_min) * \
-                         (ip_tile_z_max - ip_tile_z_min))
+#     numTotalNeighbours = int((ip_tile_x_max - ip_tile_x_min) * \
+#                          (ip_tile_y_max - ip_tile_y_min) * \
+#                          (ip_tile_z_max - ip_tile_z_min))
     
 
 
 
-    # https://numba.readthedocs.io/en/stable/cuda/memory.html#dynamic-shared-memory
-    # https://curiouscoding.nl/posts/numba-cuda-speedup/#v15-dynamic-shared-memory
-    # Note that all dynamic shared memory arrays alias, so 
-    # if you want to have multiple dynamic shared arrays, you need 
-    # to take disjoint views of the arrays
-    # these dynamically allocated arrays are now one-dimensional
-    # so we need to index them accordingly
-    dynamicAllBuffer = cuda.shared.array(shape=0, dtype="float64")
-    ownParticle = dynamicAllBuffer[0:int(numThreads*7)]
-    neighParticleBuf = dynamicAllBuffer[int(numThreads*7):]
+#     # https://numba.readthedocs.io/en/stable/cuda/memory.html#dynamic-shared-memory
+#     # https://curiouscoding.nl/posts/numba-cuda-speedup/#v15-dynamic-shared-memory
+#     # Note that all dynamic shared memory arrays alias, so 
+#     # if you want to have multiple dynamic shared arrays, you need 
+#     # to take disjoint views of the arrays
+#     # these dynamically allocated arrays are now one-dimensional
+#     # so we need to index them accordingly
+#     dynamicAllBuffer = cuda.shared.array(shape=0, dtype="float64")
+#     ownParticle = dynamicAllBuffer[0:int(numThreads*7)]
+#     neighParticleBuf = dynamicAllBuffer[int(numThreads*7):]
 
-    # copy own particles into shared memory
-    if (threadId < numParticlesOwnBlock):
-        idParticle = startIdxBlock + threadId
-        pos_x, pos_y, pos_z =  pos[idParticle]
-        ownParticle[threadId*7 + 0] = pos_x
-        ownParticle[threadId*7 + 1] = pos_y
-        ownParticle[threadId*7 + 2] = pos_z
-        ownParticle[threadId*7 + 3] = weights[idParticle]
-        ownParticle[threadId*7 + 4] = variable[idParticle]
-        ownParticle[threadId*7 + 5] = filter_lengths[idParticle]
-        ownParticle[threadId*7 + 6] = hsml[idParticle]
+#     # copy own particles into shared memory
+#     if (threadId < numParticlesOwnBlock):
+#         idParticle = startIdxBlock + threadId
+#         pos_x, pos_y, pos_z =  pos[idParticle]
+#         ownParticle[threadId*7 + 0] = pos_x
+#         ownParticle[threadId*7 + 1] = pos_y
+#         ownParticle[threadId*7 + 2] = pos_z
+#         ownParticle[threadId*7 + 3] = weights[idParticle]
+#         ownParticle[threadId*7 + 4] = variable[idParticle]
+#         ownParticle[threadId*7 + 5] = filter_lengths[idParticle]
+#         ownParticle[threadId*7 + 6] = hsml[idParticle]
         
 
-    cuda.syncthreads()
+#     cuda.syncthreads()
 
-    # start the actual filtering: at every iteration load at most
-    # N <= numThreads particles of a neighbouring tile
-    # from global memory to shared memory in the 
-    # neighbouring Particle Buffer
-    # then for each particle in the block (assigned to a thread), iterate
-    # over N to compute the contributions between particles in own block and
-    # those neighbouring just copied
+#     # start the actual filtering: at every iteration load at most
+#     # N <= numThreads particles of a neighbouring tile
+#     # from global memory to shared memory in the 
+#     # neighbouring Particle Buffer
+#     # then for each particle in the block (assigned to a thread), iterate
+#     # over N to compute the contributions between particles in own block and
+#     # those neighbouring just copied
 
-    normalization = 0.0
-    smoothVarRegister = 0.0
+#     normalization = 0.0
+#     smoothVarRegister = 0.0
 
-    if filter_type == 0:
-        for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-            for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-                for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                    numNeighParticles = particles_per_tile[tile_x, tile_y,
-                                            tile_z]
-                    startIdNeigh = start_index_for_tile[tile_x, tile_y,
-                                            tile_z]
-                    remainingParticles = numNeighParticles
-                    numIterations = (numNeighParticles + (numThreads - 1)) // numThreads
-                    for iter in range(numIterations):
-                        # copy from neighbour tile
-                        if (threadId < remainingParticles):
-                            idParticle = startIdNeigh + threadId + iter * numThreads
-                            pos_x, pos_y, pos_z =  pos[idParticle]
-                            neighParticleBuf[threadId*5 + 0] = pos_x
-                            neighParticleBuf[threadId*5 + 1] = pos_y
-                            neighParticleBuf[threadId*5 + 2] = pos_z
-                            neighParticleBuf[threadId*5 + 3] = (weights[idParticle] * 
-                                                                (4./3.)*cp.pi*hsml[idParticle]**3)
-                            neighParticleBuf[threadId*5 + 4] = variable[idParticle]
+#     if filter_type == 0:
+#         for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+#             for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+#                 for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+#                     numNeighParticles = particles_per_tile[tile_x, tile_y,
+#                                             tile_z]
+#                     startIdNeigh = start_index_for_tile[tile_x, tile_y,
+#                                             tile_z]
+#                     remainingParticles = numNeighParticles
+#                     numIterations = (numNeighParticles + (numThreads - 1)) // numThreads
+#                     for iter in range(numIterations):
+#                         # copy from neighbour tile
+#                         if (threadId < remainingParticles):
+#                             idParticle = startIdNeigh + threadId + iter * numThreads
+#                             pos_x, pos_y, pos_z =  pos[idParticle]
+#                             neighParticleBuf[threadId*5 + 0] = pos_x
+#                             neighParticleBuf[threadId*5 + 1] = pos_y
+#                             neighParticleBuf[threadId*5 + 2] = pos_z
+#                             neighParticleBuf[threadId*5 + 3] = (weights[idParticle] * 
+#                                                                 (4./3.)*cp.pi*hsml[idParticle]**3)
+#                             neighParticleBuf[threadId*5 + 4] = variable[idParticle]
                 
-                        cuda.syncthreads()
-                        numParticlesLoaded = numThreads if (remainingParticles >= numThreads) \
-                                            else remainingParticles
-                        remainingParticles -= numThreads
+#                         cuda.syncthreads()
+#                         numParticlesLoaded = numThreads if (remainingParticles >= numThreads) \
+#                                             else remainingParticles
+#                         remainingParticles -= numThreads
     
-                        # compute kernel overlap between loaded particles
-                        # and own particles
-                        if (threadId < numParticlesOwnBlock):    
-                            idOwnParticle = startIdxBlock + threadId
-                            ownFilterLength = ownParticle[threadId*7 + 5]
-                            for ip in range(numParticlesLoaded):
-                                ipShifted = (ip + threadId) % numParticlesLoaded
-                                dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
-                                                neighParticleBuf[ip*5:ip*5 + 3])
-                                # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
-                                #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
-                                if dist < filter_window * ownFilterLength:
-                                    # smoothing kernel
-                                    weight_tmp = sphere_kernel(dist, ownFilterLength)
-                                    # optional weight (e.g. mass, density, ...) 
-                                    # includes volume of voronoi cell
-                                    weight_tmp *= neighParticleBuf[ip*5 + 3]
-                                    # normalization of the integral
-                                    normalization += weight_tmp
-                                    smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
-                                    # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
-                                    hitsNeighbours[idOwnParticle] += 1
+#                         # compute kernel overlap between loaded particles
+#                         # and own particles
+#                         if (threadId < numParticlesOwnBlock):    
+#                             idOwnParticle = startIdxBlock + threadId
+#                             ownFilterLength = ownParticle[threadId*7 + 5]
+#                             for ip in range(numParticlesLoaded):
+#                                 ipShifted = (ip + threadId) % numParticlesLoaded
+#                                 dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+#                                                 neighParticleBuf[ip*5:ip*5 + 3])
+#                                 # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+#                                 #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
+#                                 if dist < filter_window * ownFilterLength:
+#                                     # smoothing kernel
+#                                     weight_tmp = sphere_kernel(dist, ownFilterLength)
+#                                     # optional weight (e.g. mass, density, ...) 
+#                                     # includes volume of voronoi cell
+#                                     weight_tmp *= neighParticleBuf[ip*5 + 3]
+#                                     # normalization of the integral
+#                                     normalization += weight_tmp
+#                                     smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
+#                                     # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
+#                                     hitsNeighbours[idOwnParticle] += 1
                 
-                        cuda.syncthreads()
+#                         cuda.syncthreads()
         
     
-    elif filter_type == 1:
-        for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-            for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-                for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                    numNeighParticles = particles_per_tile[tile_x, tile_y,
-                                            tile_z]
-                    startIdNeigh = start_index_for_tile[tile_x, tile_y,
-                                            tile_z]
-                    remainingParticles = numNeighParticles
-                    numIterations = (numNeighParticles + (numThreads - 1)) // numThreads
-                    for iter in range(numIterations):
-                        # copy from neighbour tile
-                        if (threadId < remainingParticles):
-                            idParticle = startIdNeigh + threadId + iter * numThreads
-                            pos_x, pos_y, pos_z =  pos[idParticle]
-                            neighParticleBuf[threadId*5 + 0] = pos_x
-                            neighParticleBuf[threadId*5 + 1] = pos_y
-                            neighParticleBuf[threadId*5 + 2] = pos_z
-                            neighParticleBuf[threadId*5 + 3] = (weights[idParticle] * 
-                                                                (4./3.)*cp.pi*hsml[idParticle]**3)
-                            neighParticleBuf[threadId*5 + 4] = variable[idParticle]
+#     elif filter_type == 1:
+#         for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+#             for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+#                 for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+#                     numNeighParticles = particles_per_tile[tile_x, tile_y,
+#                                             tile_z]
+#                     startIdNeigh = start_index_for_tile[tile_x, tile_y,
+#                                             tile_z]
+#                     remainingParticles = numNeighParticles
+#                     numIterations = (numNeighParticles + (numThreads - 1)) // numThreads
+#                     for iter in range(numIterations):
+#                         # copy from neighbour tile
+#                         if (threadId < remainingParticles):
+#                             idParticle = startIdNeigh + threadId + iter * numThreads
+#                             pos_x, pos_y, pos_z =  pos[idParticle]
+#                             neighParticleBuf[threadId*5 + 0] = pos_x
+#                             neighParticleBuf[threadId*5 + 1] = pos_y
+#                             neighParticleBuf[threadId*5 + 2] = pos_z
+#                             neighParticleBuf[threadId*5 + 3] = (weights[idParticle] * 
+#                                                                 (4./3.)*cp.pi*hsml[idParticle]**3)
+#                             neighParticleBuf[threadId*5 + 4] = variable[idParticle]
                 
-                        cuda.syncthreads()
-                        numParticlesLoaded = numThreads if (remainingParticles >= numThreads) \
-                                            else remainingParticles
-                        remainingParticles -= numThreads
+#                         cuda.syncthreads()
+#                         numParticlesLoaded = numThreads if (remainingParticles >= numThreads) \
+#                                             else remainingParticles
+#                         remainingParticles -= numThreads
     
-                        # compute kernel overlap between loaded particles
-                        # and own particles
-                        if (threadId < numParticlesOwnBlock):    
-                            idOwnParticle = startIdxBlock + threadId
-                            ownFilterLength = ownParticle[threadId*7 + 5]
-                            for ip in range(numParticlesLoaded):
-                                ipShifted = (ip + threadId) % numParticlesLoaded
-                                dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
-                                                neighParticleBuf[ip*5:ip*5 + 3])
-                                # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
-                                #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
-                                if dist < filter_window * ownFilterLength:
-                                    # smoothing kernel
-                                    weight_tmp = gaussian_kernel(dist, ownFilterLength)
-                                    # optional weight (e.g. mass, density, ...) 
-                                    # includes volume of voronoi cell
-                                    weight_tmp *= neighParticleBuf[ip*5 + 3]
-                                    # normalization of the integral
-                                    normalization += weight_tmp
-                                    smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
-                                    # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
-                                    hitsNeighbours[idOwnParticle] += 1
+#                         # compute kernel overlap between loaded particles
+#                         # and own particles
+#                         if (threadId < numParticlesOwnBlock):    
+#                             idOwnParticle = startIdxBlock + threadId
+#                             ownFilterLength = ownParticle[threadId*7 + 5]
+#                             for ip in range(numParticlesLoaded):
+#                                 ipShifted = (ip + threadId) % numParticlesLoaded
+#                                 dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+#                                                 neighParticleBuf[ip*5:ip*5 + 3])
+#                                 # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+#                                 #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
+#                                 if dist < filter_window * ownFilterLength:
+#                                     # smoothing kernel
+#                                     weight_tmp = gaussian_kernel(dist, ownFilterLength)
+#                                     # optional weight (e.g. mass, density, ...) 
+#                                     # includes volume of voronoi cell
+#                                     weight_tmp *= neighParticleBuf[ip*5 + 3]
+#                                     # normalization of the integral
+#                                     normalization += weight_tmp
+#                                     smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
+#                                     # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
+#                                     hitsNeighbours[idOwnParticle] += 1
                 
-                        cuda.syncthreads()
+#                         cuda.syncthreads()
                         
 
-    elif filter_type == 2: ## mexican-hat filter
-        for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
-            for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
-                for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
-                    numNeighParticles = particles_per_tile[tile_x, tile_y,
-                                            tile_z]
-                    startIdNeigh = start_index_for_tile[tile_x, tile_y,
-                                            tile_z]
-                    remainingParticles = numNeighParticles
-                    numIterations = (numNeighParticles + (numThreads - 1)) // numThreads
-                    for iter in range(numIterations):
-                        # copy from neighbour tile
-                        if (threadId < remainingParticles):
-                            idParticle = startIdNeigh + threadId + iter * numThreads
-                            pos_x, pos_y, pos_z =  pos[idParticle]
-                            neighParticleBuf[threadId*5 + 0] = pos_x
-                            neighParticleBuf[threadId*5 + 1] = pos_y
-                            neighParticleBuf[threadId*5 + 2] = pos_z
-                            neighParticleBuf[threadId*5 + 3] = (weights[idParticle] * 
-                                                                (4./3.)*cp.pi*hsml[idParticle]**3)
-                            neighParticleBuf[threadId*5 + 4] = variable[idParticle]
+#     elif filter_type == 2: ## mexican-hat filter
+#         for tile_x in range(ip_tile_x_min, ip_tile_x_max + 1):
+#             for tile_y in range(ip_tile_y_min, ip_tile_y_max + 1):
+#                 for tile_z in range(ip_tile_z_min, ip_tile_z_max + 1):
+#                     numNeighParticles = particles_per_tile[tile_x, tile_y,
+#                                             tile_z]
+#                     startIdNeigh = start_index_for_tile[tile_x, tile_y,
+#                                             tile_z]
+#                     remainingParticles = numNeighParticles
+#                     numIterations = (numNeighParticles + (numThreads - 1)) // numThreads
+#                     for iter in range(numIterations):
+#                         # copy from neighbour tile
+#                         if (threadId < remainingParticles):
+#                             idParticle = startIdNeigh + threadId + iter * numThreads
+#                             pos_x, pos_y, pos_z =  pos[idParticle]
+#                             neighParticleBuf[threadId*5 + 0] = pos_x
+#                             neighParticleBuf[threadId*5 + 1] = pos_y
+#                             neighParticleBuf[threadId*5 + 2] = pos_z
+#                             neighParticleBuf[threadId*5 + 3] = (weights[idParticle] * 
+#                                                                 (4./3.)*cp.pi*hsml[idParticle]**3)
+#                             neighParticleBuf[threadId*5 + 4] = variable[idParticle]
                 
-                        cuda.syncthreads()
-                        numParticlesLoaded = numThreads if (remainingParticles >= numThreads) \
-                                            else remainingParticles
-                        remainingParticles -= numThreads
+#                         cuda.syncthreads()
+#                         numParticlesLoaded = numThreads if (remainingParticles >= numThreads) \
+#                                             else remainingParticles
+#                         remainingParticles -= numThreads
     
-                        # compute kernel overlap between loaded particles
-                        # and own particles
-                        if (threadId < numParticlesOwnBlock):    
-                            idOwnParticle = startIdxBlock + threadId
-                            ownFilterLength = ownParticle[threadId*7 + 5]
-                            for ip in range(numParticlesLoaded):
-                                ipShifted = (ip + threadId) % numParticlesLoaded
-                                dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
-                                                neighParticleBuf[ip*5:ip*5 + 3])
-                                # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
-                                #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
-                                if dist < filter_window * ownFilterLength:
-                                    # smoothing kernel
-                                    weight_tmp = mexican_kernel(dist, ownFilterLength)
-                                    # optional weight (e.g. mass, density, ...) 
-                                    # includes volume of voronoi cell
-                                    weight_tmp *= neighParticleBuf[ip*5 + 3]
-                                    # normalization of the integral
-                                    # for the mexican filter it is a bit different
-                                    # the normalization uses the sphere kernel
-                                    normalization += (neighParticleBuf[ip*5 + 3] *
-                                                      sphere_kernel(dist, filter_window * ownFilterLength) )
-                                    smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
-                                    # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
-                                    hitsNeighbours[idOwnParticle] += 1
+#                         # compute kernel overlap between loaded particles
+#                         # and own particles
+#                         if (threadId < numParticlesOwnBlock):    
+#                             idOwnParticle = startIdxBlock + threadId
+#                             ownFilterLength = ownParticle[threadId*7 + 5]
+#                             for ip in range(numParticlesLoaded):
+#                                 ipShifted = (ip + threadId) % numParticlesLoaded
+#                                 dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+#                                                 neighParticleBuf[ip*5:ip*5 + 3])
+#                                 # dist = distance(ownParticle[threadId*7:threadId*7 + 3], 
+#                                 #                 neighParticleBuf[ipShifted*5:ipShifted*5 + 3])
+#                                 if dist < filter_window * ownFilterLength:
+#                                     # smoothing kernel
+#                                     weight_tmp = mexican_kernel(dist, ownFilterLength)
+#                                     # optional weight (e.g. mass, density, ...) 
+#                                     # includes volume of voronoi cell
+#                                     weight_tmp *= neighParticleBuf[ip*5 + 3]
+#                                     # normalization of the integral
+#                                     # for the mexican filter it is a bit different
+#                                     # the normalization uses the sphere kernel
+#                                     normalization += (neighParticleBuf[ip*5 + 3] *
+#                                                       sphere_kernel(dist, filter_window * ownFilterLength) )
+#                                     smoothVarRegister += neighParticleBuf[ip*5 + 4] * weight_tmp
+#                                     # smoothVarRegister += neighParticleBuf[ipShifted*5 + 4] * weight_tmp
+#                                     hitsNeighbours[idOwnParticle] += 1
                 
-                        cuda.syncthreads()
+#                         cuda.syncthreads()
                         
         
-    if (threadId < numParticlesOwnBlock):   
-        # weight should never be zero since any particle finds at
-        # least itself
-        smoothVarRegister /= normalization
+#     if (threadId < numParticlesOwnBlock):   
+#         # weight should never be zero since any particle finds at
+#         # least itself
+#         smoothVarRegister /= normalization
         
-        # now we need to write smoothVarRegister back into 
-        # global memory. It could be that this particle (thread)
-        # is actually outside the filtering domain. So we need to 
-        # check first
-        idOwnParticle = startIdxBlock + threadId
+#         # now we need to write smoothVarRegister back into 
+#         # global memory. It could be that this particle (thread)
+#         # is actually outside the filtering domain. So we need to 
+#         # check first
+#         idOwnParticle = startIdxBlock + threadId
 
-        xmin = center_x - widths_x / 2 - ownParticle[threadId*7 + 6]
-        xmax = center_x + widths_x / 2 + ownParticle[threadId*7 + 6]
+#         xmin = center_x - widths_x / 2 - ownParticle[threadId*7 + 6]
+#         xmax = center_x + widths_x / 2 + ownParticle[threadId*7 + 6]
     
-        ymin = center_y - widths_y / 2 - ownParticle[threadId*7 + 6]
-        ymax = center_y + widths_y / 2 + ownParticle[threadId*7 + 6]
+#         ymin = center_y - widths_y / 2 - ownParticle[threadId*7 + 6]
+#         ymax = center_y + widths_y / 2 + ownParticle[threadId*7 + 6]
     
-        zmin = center_z - widths_z / 2 - ownParticle[threadId*7 + 6]
-        zmax = center_z + widths_z / 2 + ownParticle[threadId*7 + 6]
+#         zmin = center_z - widths_z / 2 - ownParticle[threadId*7 + 6]
+#         zmax = center_z + widths_z / 2 + ownParticle[threadId*7 + 6]
 
-        xp, yp, zp = ownParticle[threadId*7:threadId*7 + 3]
+#         xp, yp, zp = ownParticle[threadId*7:threadId*7 + 3]
 
-        if ((xp > xmin) and (xp < xmax) 
-            and (yp > ymin) and (yp < ymax) 
-                and (zp > zmin) and (zp < zmax)):
-                    smooth_var[idOwnParticle] = smoothVarRegister
-                    isParticleInDomain[idOwnParticle] += 1
+#         if ((xp > xmin) and (xp < xmax) 
+#             and (yp > ymin) and (yp < ymax) 
+#                 and (zp > zmin) and (zp < zmax)):
+#                     smooth_var[idOwnParticle] = smoothVarRegister
+#                     isParticleInDomain[idOwnParticle] += 1
