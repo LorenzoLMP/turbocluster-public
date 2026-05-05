@@ -2,7 +2,6 @@
 
 # TODO: for cleanup branch
 - make derivative its own class
-- clean helper functions
 - double-check tests
 - can cuda.jit() be replaced by jit() on non-cuda hardware?
 
