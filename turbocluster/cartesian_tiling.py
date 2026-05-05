@@ -102,9 +102,6 @@ class CartesianTiling:
         self.threadsperblock = threadsperblock
 
         # Copy positions
-        # if orientation is not None:
-        #     self._pos = cp.array(np.matmul(orientation.inverse_rotation_matrix, positions))
-        # else:
         self._pos = cp.array(positions)
 
         self.tilebox_widths = widths + 2 * extra_layer_thickness

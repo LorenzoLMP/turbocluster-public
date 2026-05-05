@@ -5,7 +5,6 @@ import math
 # import numba
 import paicos as pa
 from .cartesian_tiling import CartesianTiling
-from .spherical_tiling import SphericalTiling
 import nvtx
 
 from .potential_energy_kernels import *
