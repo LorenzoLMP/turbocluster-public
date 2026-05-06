@@ -152,14 +152,11 @@ class SmoothingFilter:
         if pa.settings.use_units:
             self.gpu_variables['pos'] = cp.array(self.pos.value)
             self.gpu_variables['hsml'] = cp.array(self.hsml.value)
-        else:
-            self.gpu_variables['pos'] = cp.array(self.pos)
-            self.gpu_variables['hsml'] = cp.array(self.hsml)
-
-        if pa.settings.use_units:
             self.gpu_variables['widths'] = cp.array(self.widths.value)
             self.gpu_variables['center'] = cp.array(self.center.value)
         else:
+            self.gpu_variables['pos'] = cp.array(self.pos)
+            self.gpu_variables['hsml'] = cp.array(self.hsml)
             self.gpu_variables['widths'] = cp.array(self.widths)
             self.gpu_variables['center'] = cp.array(self.center)
 

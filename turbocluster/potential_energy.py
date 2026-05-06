@@ -25,9 +25,10 @@ class PotentialEnergy:
         """
         rng0 = nvtx.start_range(message="init_potential_energy")
 
-        if orientation is not None:
-            raise RuntimeError('not implemented')
-        self.orientation = None
+        if orientation is None:
+            self.orientation = None
+        else:
+            self.orientation = orientation.copy
 
         self.snap = snap
 
@@ -71,9 +72,7 @@ class PotentialEnergy:
 
         # Create tiling
         if (tilingType == 'cartesian'):
-            self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'],
-                                        self.gpu_variables['widths'], 0.0, npix=npix,
-                                        threadsperblock=threadsperblock)
+            self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'], self.gpu_variables['widths'], 0.0, npix=npix,threadsperblock=threadsperblock)
 
             
         
@@ -148,23 +147,26 @@ class PotentialEnergy:
         self.gpu_variables = {}
         if pa.settings.use_units:
             self.gpu_variables['pos'] = cp.array(self.pos.value)
+            self.gpu_variables['widths'] = cp.array(self.widths.value)
+            self.gpu_variables['center'] = cp.array(self.center.value)
         else:
             self.gpu_variables['pos'] = cp.array(self.pos)
+            self.gpu_variables['widths'] = cp.array(self.widths)
+            self.gpu_variables['center'] = cp.array(self.center)
 
         if self.orientation is not None:
             self.gpu_variables['rotation_matrix'] = cp.array(
                 self.orientation.rotation_matrix)
 
-        if pa.settings.use_units:
-            if self.cartesian: 
-                self.gpu_variables['widths'] = cp.array(self.widths.value)
-            
-            self.gpu_variables['center'] = cp.array(self.center.value)
-        else:
-            if self.cartesian: 
-                self.gpu_variables['widths'] = cp.array(self.widths)
-            
-            self.gpu_variables['center'] = cp.array(self.center)
+        if self.orientation is not None:
+            self.gpu_variables['rotation_matrix'] = cp.array(
+                self.orientation.rotation_matrix)
+            self.gpu_variables['inverse_rotation_matrix'] = cp.array(self.orientation.inverse_rotation_matrix)
+            # rotate coordinates
+            self.gpu_variables['pos'] = cp.matmul(self.gpu_variables['inverse_rotation_matrix'], self.gpu_variables['pos'], axes=[(-2, -1), (-1, -2), (-1, -2)])
+            self.gpu_variables['center'] = cp.matmul(self.gpu_variables['inverse_rotation_matrix'], self.gpu_variables['center'])
+
+        
 
     def _send_variable_to_gpu(self, variable, gpu_key='input_variable'):
         if isinstance(variable, str):
