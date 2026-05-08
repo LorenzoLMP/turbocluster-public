@@ -18,7 +18,7 @@ class SmoothingFilter(DataGpuInit):
     """
     def __init__(self, snap, center, widths, orientation=None, npix=128, threadsperblock=256, **kwargs):
         
-        super().__init__(snap, center, widths, orientation=None, npix=128, threadsperblock=256)
+        super().__init__(snap, center, widths, orientation=orientation, npix=npix, threadsperblock=threadsperblock)
 
     # def _prepare_data(self):
 
@@ -265,7 +265,7 @@ class SmoothingFilter(DataGpuInit):
             
         rng0 = nvtx.start_range(message="do_filter")
         
-        variable_str, unit_quantity = self._send_variable_to_gpu(variable)
+        variable_str, unit_quantity = self._send_variable_to_gpu(variable, sort=True)
 
         if not hasattr(filter_length, 'unit'):
             raise RuntimeError('filter_length must have unit')
@@ -274,12 +274,12 @@ class SmoothingFilter(DataGpuInit):
         # send filter_length to gpu
         if isinstance(filter_length.value, np.ndarray):
             assert filter_length.shape[0] == self.index.shape[0]
-            self._send_variable_to_gpu(filter_length, gpu_key='filter_lengths')
+            self._send_variable_to_gpu(filter_length, gpu_key='filter_lengths', sort=True)
         else:
             self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length.value
 
         if selection is not None:
-            self._send_variable_to_gpu(selection*self.snap.uq(''), gpu_key='selection')
+            self._send_variable_to_gpu(selection*self.snap.uq(''), gpu_key='selection', sort=True)
 
         # Compute the gradient in x, y, z
         # grad_var is a 3-dim vector

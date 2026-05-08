@@ -19,7 +19,7 @@ class PotentialEnergy(DataGpuInit):
 
     def __init__(self, snap, center, widths, orientation=None, npix=128, threadsperblock=256, **kwargs):
         
-        super().__init__(snap, center, widths, orientation=None, npix=128, threadsperblock=256)
+        super().__init__(snap, center, widths, orientation=orientation, npix=npix, threadsperblock=threadsperblock)
 
     # def _prepare_data(self):
 
