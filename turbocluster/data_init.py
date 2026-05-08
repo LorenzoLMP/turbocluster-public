@@ -108,7 +108,7 @@ class DataGpuInit:
         return indices
             
 
-    def _send_variable_to_gpu(self, variable, gpu_key='input_variable'):
+    def _send_variable_to_gpu(self, variable, gpu_key='input_variable', sort=False):
         if isinstance(variable, str):
             variable_str = str(variable)
             # err_msg = 'filter only works on gas'
@@ -131,6 +131,14 @@ class DataGpuInit:
                 self.gpu_variables[variable_str] = cp.array(variable.value)
             else:
                 self.gpu_variables[variable_str] = cp.array(variable)
+
+        if sort:
+            try:
+                if self.gpu_variables[variable_str].shape[0] == self.tile.sort_index.shape[0]:
+                    self.gpu_variables[variable_str] = self.gpu_variables[variable_str][
+                        self.tile.sort_index]
+            except:
+                raise RuntimeError("Sorted can be done only after creating a CartesianTiling")
 
         if isinstance(variable, pa.units.PaicosQuantity):
             unit_quantity = variable.unit_quantity
