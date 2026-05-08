@@ -74,7 +74,7 @@ class SmoothingFilter(DataGpuInit):
 
         self._rotate_coordinates()
 
-        self.extra_layer_thickness = np.max(self.hsml) + self.max_search_radius
+        self.extra_layer_thickness = np.max(self.hsml[self.index]) + self.max_search_radius
         if pa.settings.use_units:
             self.extra_layer_thickness = self.extra_layer_thickness.value
     
@@ -84,7 +84,7 @@ class SmoothingFilter(DataGpuInit):
 
         # Do the sorting
         for variable_str in self.gpu_variables:
-            if self.gpu_variables[variable_str].shape[0] == self.tile.sort_index[0]:
+            if self.gpu_variables[variable_str].shape[0] == self.tile.sort_index.shape[0]:
                 self.gpu_variables[variable_str] = self.gpu_variables[variable_str][
                     self.tile.sort_index]
 
