@@ -12,8 +12,15 @@ from .data_init import DataGpuInit
 class DepositCartesianGrid(DataGpuInit):
     """
     """
+    def __init__(self, snap, center, widths, orientation=None, npix=128, threadsperblock=256, **kwargs):
+        
+        super().__init__(snap, center, widths, orientation=None, npix=128, threadsperblock=256)
 
-    def _prepare_data(self):
+    # def _prepare_data(self):
+
+        self.__dict__.update(kwargs)
+
+    # def _prepare_data(self):
 
         if 'kernel_type' not in self.__dict__:
             raise ValueError("Please provide kernel type. Possible options are: NGP, CIC, TSC, PCS.")
@@ -75,8 +82,7 @@ class DepositCartesianGrid(DataGpuInit):
         
         self.Np = Np = self.gpu_variables['pos'].shape[0]
 
-        self.blocks_1d = (Np + (threadsperblock - 1)) // threadsperblock
-        self.threadsperblock = threadsperblock
+        self.blocks_1d = (Np + (self.threadsperblock - 1)) // self.threadsperblock
 
 
     def _do_deposition_gpu(self, variable_str, weight):

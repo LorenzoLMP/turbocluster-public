@@ -17,7 +17,14 @@ class PotentialEnergy(DataGpuInit):
     uniform cartesian grid, and approximating long-range interactions as two point masses
     """
 
-    def _prepare_data(self):
+    def __init__(self, snap, center, widths, orientation=None, npix=128, threadsperblock=256, **kwargs):
+        
+        super().__init__(snap, center, widths, orientation=None, npix=128, threadsperblock=256)
+
+    # def _prepare_data(self):
+
+        self.__dict__.update(kwargs)
+    # def _prepare_data(self):
 
         if 'mass' not in self.__dict__:
             raise ValueError("Please provide masses")
@@ -74,15 +81,13 @@ class PotentialEnergy(DataGpuInit):
 
         # Do the sorting
         for variable_str in self.gpu_variables:
-            if self.gpu_variables[variable_str].shape[0] == self.tile.sort_index[0]):
+            if self.gpu_variables[variable_str].shape[0] == self.tile.sort_index[0]:
                 self.gpu_variables[variable_str] = self.gpu_variables[variable_str][
                     self.tile.sort_index]
 
         self.Np = Np = self.gpu_variables['pos'].shape[0]
 
-        self.blocks_1d = (Np + (threadsperblock - 1)) // threadsperblock
-        self.threadsperblock = threadsperblock
-
+        self.blocks_1d = (Np + (self.threadsperblock - 1)) // self.threadsperblock
 
         # compute total mass in each tile
         self.tile.mass_per_tile = self.tile.accumulate_per_tile(self.gpu_variables['mass'])

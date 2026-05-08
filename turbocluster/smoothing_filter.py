@@ -16,10 +16,15 @@ from .derivative_smooth_filt_kernels import *
 class SmoothingFilter(DataGpuInit):
     """
     """
+    def __init__(self, snap, center, widths, orientation=None, npix=128, threadsperblock=256, **kwargs):
+        
+        super().__init__(snap, center, widths, orientation=None, npix=128, threadsperblock=256)
 
-    def _prepare_data(self):
+    # def _prepare_data(self):
 
-        self.gauss_multiplier = self.__dict__.get('gauss_multiplier', 4)
+        self.__dict__.update(kwargs)
+
+        gauss_multiplier = self.__dict__.get('gauss_multiplier', 4)
         search_radius = self.__dict__.get('search_radius', None)
         
         # Calculate the smoothing length
@@ -32,7 +37,7 @@ class SmoothingFilter(DataGpuInit):
         if search_radius is None:
             search_radius = 10.0 * self.hsml
         elif not hasattr(search_radius, 'unit'):
-            search_radius = search_radius*code_length
+            search_radius = search_radius*self.code_length
 
         if not isinstance(search_radius.value, np.ndarray):
             # it is not a vector already
@@ -44,7 +49,7 @@ class SmoothingFilter(DataGpuInit):
 
         if pa.settings.use_units:
             # use units
-            assert search_radius.unit == code_length.unit, 'this restriction applies'
+            assert search_radius.unit == self.code_length.unit, 'this restriction applies'
             self.search_radius = 1.1*self.multiplier*search_radius
         else:
             # does not need units
@@ -59,7 +64,7 @@ class SmoothingFilter(DataGpuInit):
 
             self.max_search_radius = np.max(self.search_radius[self.indicesFirstPass])
             thickness = self.hsml + self.max_search_radius
-            self.index = = self._do_region_selection(thickness)
+            self.index = self._do_region_selection(thickness)
 
         self._send_variable_to_gpu(self.pos, gpu_key='pos')
         self._send_variable_to_gpu(self.hsml, gpu_key='hsml')
@@ -75,19 +80,17 @@ class SmoothingFilter(DataGpuInit):
     
         # Create tiling
         if (self.cartesian):
-            self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'], self.gpu_variables['widths'], self.extra_layer_thickness, npix=npix, threadsperblock=threadsperblock)
+            self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'], self.gpu_variables['widths'], self.extra_layer_thickness, npix=self.npix, threadsperblock=self.threadsperblock)
 
         # Do the sorting
         for variable_str in self.gpu_variables:
-            if self.gpu_variables[variable_str].shape[0] == self.tile.sort_index[0]):
+            if self.gpu_variables[variable_str].shape[0] == self.tile.sort_index[0]:
                 self.gpu_variables[variable_str] = self.gpu_variables[variable_str][
                     self.tile.sort_index]
 
         self.Np = Np = self.gpu_variables['pos'].shape[0]
 
-        self.blocks_1d = (Np + (threadsperblock - 1)) // threadsperblock
-        self.threadsperblock = threadsperblock
-
+        self.blocks_1d = (Np + (self.threadsperblock - 1)) // self.threadsperblock
 
     def filter_variable(self, variable, filter_length, weight=None, filter_type="mean", iterative=False, selection=None):
         """
@@ -169,7 +172,7 @@ class SmoothingFilter(DataGpuInit):
             iterativeFilter = 1 # iterative
         
 
-        if cp.max(filter_lengths) > self.extra_layer_thickness_value:
+        if cp.max(filter_lengths) > self.extra_layer_thickness:
             err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
             raise RuntimeError(err_msg)
 
@@ -321,7 +324,7 @@ class SmoothingFilter(DataGpuInit):
             filter_type = 2
        
 
-        if cp.max(filter_lengths) > self.extra_layer_thickness_value:
+        if cp.max(filter_lengths) > self.extra_layer_thickness:
             err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
             raise RuntimeError(err_msg)
 
