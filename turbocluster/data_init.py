@@ -7,16 +7,12 @@ import nvtx
 
 
 from .cartesian_tiling import CartesianTiling
-# from .SmoothingFilter.smoothing_filter import SmoothingFilter
-# from .CudaKernels.smoothing_filter_kernels import *
-# from .CudaKernels.generic_kernels import *
-# from .helper_functions import *
 
 class DataGpuInit:
     """
     """
 
-    def __init__(self, snap, center, widths, orientation=None, npix=128, threadsperblock=256, **kwargs):
+    def __init__(self, snap, center, widths, orientation=None, threadsperblock=256, **kwargs):
         """
         
         """
@@ -26,7 +22,7 @@ class DataGpuInit:
         self.snap = snap
         self.cartesian = True
         self.code_length = code_length = self.snap.length
-        self.npix = npix
+        # self.npix = npix
         self.threadsperblock = threadsperblock
 
         if hasattr(center, 'unit'):
@@ -53,41 +49,6 @@ class DataGpuInit:
         # self.pos = self.snap["0_Coordinates"]
 
         self.gpu_variables = {}
-    
-        # self._prepare_data()
-
-    # def _prepare_data(self):
-
-    #     ## This selects the region 
-    #     if (self.cartesian):
-    #         thickness = np.zeros(self.pos.shape[0])*code_length
-    #         self.index = self._do_region_selection(thickness)
-
-    #     ## requires selection of the region
-    #     self._send_variable_to_gpu(self.pos, gpu_key='pos')
-    #     self._send_variable_to_gpu(self.widths, gpu_key='widths')
-    #     self._send_variable_to_gpu(self.center, gpu_key='center')
-
-    #     self._rotate_coordinates()
-
-
-    #     self.extra_layer_thickness = np.max(thickness).value 
-
-    #     # Create tiling
-    #     if (self.cartesian):
-    #         self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'], self.gpu_variables['widths'], self.extra_layer_thickness, npix=self.npix, threadsperblock=self.threadsperblock)
-
-    #     # Do the sorting
-    #     for variable_str in self.gpu_variables:
-    #         if self.gpu_variables[variable_str].shape[0] == self.tile.sort_index[0]:
-    #             self.gpu_variables[variable_str] = self.gpu_variables[variable_str][
-    #                 self.tile.sort_index]
-
-    #     self.Np = Np = self.gpu_variables['pos'].shape[0]
-
-    #     self.blocks_1d = (Np + (threadsperblock - 1)) // threadsperblock
- 
-    #     nvtx.end_range(rng0)
 
     def _do_region_selection(self, thickness, pos):
 
@@ -111,15 +72,16 @@ class DataGpuInit:
 
     def _send_variable_to_gpu(self, variable, gpu_key='input_variable', sort=False):
         if isinstance(variable, str):
-            variable_str = str(variable)
+            # variable_str = str(variable)
             # err_msg = 'filter only works on gas'
             # assert int(variable[0]) == 0, err_msg
             variable = self.snap[variable]
         else:
-            variable_str = gpu_key
+            # variable_str = gpu_key
             if not isinstance(variable, np.ndarray):
                 raise RuntimeError('Unexpected type for variable')
 
+        variable_str = gpu_key
         # select only region of interest
         if (variable.shape[0] == self.index.shape[0]):
             variable = variable[self.index]

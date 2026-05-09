@@ -96,7 +96,7 @@ class CartesianTiling:
     def __init__(self, positions, center, widths, extra_layer_thickness,
                  npix=128, threadsperblock=256):
 
-        Np = positions.shape[0]
+        self.Np = Np = positions.shape[0]
 
         self.blocks_1d  = blocks_1d = (Np + (threadsperblock - 1)) // threadsperblock
         self.threadsperblock = threadsperblock
@@ -121,13 +121,17 @@ class CartesianTiling:
 
         self._pos -= self.off_sets[None, :]
 
+    def sort_particles_in_tiles(self):
+
+        npix_x, npix_y, npix_z = self.npixs
+
         # tile_index tells us which tile does each particle belong to
         self.tile_index = cp.zeros((Np, 3), dtype=int)
 
-        self.particles_per_tile = cp.zeros((npix_x, npix_y, npix_z), dtype=int)
+        self.particles_per_tile = cp.zeros(self.npixs.tolist(), dtype=int)
         # Initialize to value larger than the largest posssible tileindex
         self.start_index_for_tile = cp.ones(
-            (npix_x, npix_y, npix_z), dtype=int) * Np + 1
+            self.npixs.tolist(), dtype=int) * Np + 1
 
         # Get what tile does each particle belong to
         rng = nvtx.start_range(message="find_tile_index")
@@ -141,8 +145,8 @@ class CartesianTiling:
                                      self.tile_index[:, 0])
         nvtx.end_range(rng)
         
-        unsort_index = cp.zeros(Np, dtype=int)
-        unsort_index[self.sort_index] = cp.arange(Np)
+        unsort_index = cp.zeros(self.Np, dtype=int)
+        unsort_index[self.sort_index] = cp.arange(self.Np)
         self.unsort_index = unsort_index
 
         self.tile_index = self.tile_index[self.sort_index, :]

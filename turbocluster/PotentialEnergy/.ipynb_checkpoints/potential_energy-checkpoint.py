@@ -18,10 +18,12 @@ class PotentialEnergy(DataGpuInit):
 
     def __init__(self, snap, center, widths, orientation=None, npix=128, threadsperblock=256, **kwargs):
         
-        super().__init__(snap, center, widths, orientation=orientation, npix=npix, threadsperblock=threadsperblock)
+        super().__init__(snap, center, widths, orientation=orientation, threadsperblock=threadsperblock)
 
 
         self.__dict__.update(kwargs)
+
+        self.npix = npix
 
         if 'pos' not in self.__dict__:
             print("No `pos' argument given. Defaults to gas particles")
@@ -80,6 +82,7 @@ class PotentialEnergy(DataGpuInit):
         # Create tiling
         if (self.cartesian):
             self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'], self.gpu_variables['widths'], 0.0, npix=npix,threadsperblock=threadsperblock)
+            self.tile.sort_particles_in_tiles()
 
         # Do the sorting
         for variable_str in self.gpu_variables:

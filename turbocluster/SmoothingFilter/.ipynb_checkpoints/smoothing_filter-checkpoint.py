@@ -19,11 +19,11 @@ class SmoothingFilter(DataGpuInit):
     """
     def __init__(self, snap, center, widths, orientation=None, npix=128, threadsperblock=256, **kwargs):
         
-        super().__init__(snap, center, widths, orientation=orientation, npix=npix, threadsperblock=threadsperblock)
-
-    # def _prepare_data(self):
+        super().__init__(snap, center, widths, orientation=orientation, threadsperblock=threadsperblock)
 
         self.__dict__.update(kwargs)
+
+        self.npix = npix
 
         gauss_multiplier = self.__dict__.get('gauss_multiplier', 4)
         search_radius = self.__dict__.get('search_radius', None)
