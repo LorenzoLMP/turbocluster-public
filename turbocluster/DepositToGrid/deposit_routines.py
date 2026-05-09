@@ -4,10 +4,12 @@ from numba import cuda
 import nvtx
 import paicos as pa
 
-from .deposit_kernels import *
-from .generic_kernels import *
-from .power_spectra_kernels import *
-from .data_init import DataGpuInit
+from ..data_init import DataGpuInit
+from ..CudaKernels.generic_kernels import *
+from ..CudaKernels.deposit_kernels import *
+from ..CudaKernels.power_spectra_kernels import *
+
+
 
 class DepositCartesianGrid(DataGpuInit):
     """

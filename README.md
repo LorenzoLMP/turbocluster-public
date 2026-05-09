@@ -1,7 +1,7 @@
 # cluster-turbulence
 
 # TODO: for cleanup branch
-- make derivative its own class
+- make derivative its own class ?
 - double-check tests
 - can cuda.jit() be replaced by jit() on non-cuda hardware?
 - create base class that init vars, sends data to gpu etc. SmoothingFilter, Deposit and Potential can be subclasses

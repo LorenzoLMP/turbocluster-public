@@ -2,15 +2,17 @@ import numpy as np
 import cupy as cp
 from numba import cuda
 import math
-# import numba
 import paicos as pa
-from .cartesian_tiling import CartesianTiling
-from .data_init import DataGpuInit
 import nvtx
 
-from .smoothing_filter_kernels import *
-from .generic_kernels import *
-from .derivative_smooth_filt_kernels import *
+
+from ..data_init import DataGpuInit
+from ..cartesian_tiling import CartesianTiling
+from ..SmoothingFilter.smoothing_filter import SmoothingFilter
+from ..CudaKernels.smoothing_filter_kernels import *
+from ..CudaKernels.derivative_smooth_filt_kernels import *
+from ..CudaKernels.generic_kernels import *
+from ..helper_functions import *
 
 
 class SmoothingFilter(DataGpuInit):

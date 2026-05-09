@@ -2,14 +2,13 @@ import numpy as np
 import cupy as cp
 from numba import cuda
 import math
-# import numba
 import paicos as pa
-from .cartesian_tiling import CartesianTiling
-from .data_init import DataGpuInit
 import nvtx
 
-from .potential_energy_kernels import *
-# from .generic_kernels import *
+from ..data_init import DataGpuInit
+from ..cartesian_tiling import CartesianTiling
+from ..CudaKernels.potential_energy_kernels import *
+
 
 class PotentialEnergy(DataGpuInit):
     """
