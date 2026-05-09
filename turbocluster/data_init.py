@@ -7,10 +7,10 @@ import nvtx
 
 
 from .cartesian_tiling import CartesianTiling
-from .SmoothingFilter.smoothing_filter import SmoothingFilter
-from .CudaKernels.smoothing_filter_kernels import *
-from .CudaKernels.generic_kernels import *
-from .helper_functions import *
+# from .SmoothingFilter.smoothing_filter import SmoothingFilter
+# from .CudaKernels.smoothing_filter_kernels import *
+# from .CudaKernels.generic_kernels import *
+# from .helper_functions import *
 
 class DataGpuInit:
     """
@@ -50,7 +50,7 @@ class DataGpuInit:
         else:
             self.orientation = orientation.copy
 
-        self.pos = self.snap["0_Coordinates"]
+        # self.pos = self.snap["0_Coordinates"]
 
         self.gpu_variables = {}
     
@@ -89,7 +89,7 @@ class DataGpuInit:
  
     #     nvtx.end_range(rng0)
 
-    def _do_region_selection(self, thickness):
+    def _do_region_selection(self, thickness, pos):
 
         center = self.center
         widths = self.widths
@@ -100,10 +100,10 @@ class DataGpuInit:
         rng = nvtx.start_range(message="region_selection")
         if self.orientation is None:
             get_index = pa.util.get_index_of_cubic_region_plus_thin_layer
-            indices = get_index(self.snap["0_Coordinates"],center, widths, thickness, snap.box)
+            indices = get_index(pos,center, widths, thickness, snap.box)
         else:
             get_index = pa.util.get_index_of_rotated_cubic_region_plus_thin_layer
-            indices = get_index(self.snap["0_Coordinates"], center, widths, thickness, snap.box, self.orientation)
+            indices = get_index(pos, center, widths, thickness, snap.box, self.orientation)
         nvtx.end_range(rng)
 
         return indices

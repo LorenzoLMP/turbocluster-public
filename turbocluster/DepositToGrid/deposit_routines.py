@@ -32,10 +32,20 @@ class DepositCartesianGrid(DataGpuInit):
             raise ValueError("Please provide number of gridpoints for the deposition.")
         npoints = self.__dict__['npoints']
 
-        # Calculate the diameter of the particle
-        # self.hsml = 2.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
-        # test with twice as large diameter
-        self.hsml = 4.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
+        if 'pos' not in self.__dict__:
+            print("No `pos' argument given. Defaults to gas particles")
+            self.pos = self.snap["0_Coordinates"]
+        else:
+            self.pos = self.__dict__['pos']
+
+        if 'hsml' not in self.__dict__:
+            print("No `hsml' argument given. Defaults to gas particles")
+            # Calculate the smoothing length
+            ## this is the radius of the 'spherical' voronoi cell
+            # test with 4 times radius 
+            self.hsml = 4.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
+        else:
+            self.hsml = self.__dict__['hsml']
 
         if pa.settings.use_units:
             self.hsml = self.hsml.to(self.pos.unit)
@@ -53,7 +63,7 @@ class DepositCartesianGrid(DataGpuInit):
 
         if (self.cartesian):
             thickness = self.support*self.hsml 
-            self.index = self._do_region_selection(thickness)
+            self.index = self._do_region_selection(thickness, self.pos)
 
         self._send_variable_to_gpu(self.pos, gpu_key='pos')
         self._send_variable_to_gpu(self.hsml, gpu_key='hsml')

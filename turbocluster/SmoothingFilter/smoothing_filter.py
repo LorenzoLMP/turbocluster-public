@@ -8,7 +8,6 @@ import nvtx
 
 from ..data_init import DataGpuInit
 from ..cartesian_tiling import CartesianTiling
-from ..SmoothingFilter.smoothing_filter import SmoothingFilter
 from ..CudaKernels.smoothing_filter_kernels import *
 from ..CudaKernels.derivative_smooth_filt_kernels import *
 from ..CudaKernels.generic_kernels import *
@@ -28,10 +27,20 @@ class SmoothingFilter(DataGpuInit):
 
         gauss_multiplier = self.__dict__.get('gauss_multiplier', 4)
         search_radius = self.__dict__.get('search_radius', None)
-        
-        # Calculate the smoothing length
-        ## this is the radius of the 'spherical' voronoi cell
-        self.hsml = np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
+
+        if 'pos' not in self.__dict__:
+            print("No `pos' argument given. Defaults to gas particles")
+            self.pos = self.snap["0_Coordinates"]
+        else:
+            self.pos = self.__dict__['pos']
+
+        if 'hsml' not in self.__dict__:
+            print("No `hsml' argument given. Defaults to gas particles")
+            # Calculate the smoothing length
+            ## this is the radius of the 'spherical' voronoi cell
+            self.hsml = np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
+        else:
+            self.hsml = self.__dict__['hsml']
 
         if pa.settings.use_units:
             self.hsml = self.hsml.to(self.pos.unit)
@@ -57,16 +66,15 @@ class SmoothingFilter(DataGpuInit):
             # does not need units
             self.search_radius = 1.1*self.multiplier*np.array(search_radius)
 
-        ## This selects the region and sends
-        ## a bunch of arrays to the gpu
+        ## This selects the region 
         # rng = nvtx.start_range(message="region_selection")
         if (self.cartesian):
             thickness = self.hsml 
-            self.indicesFirstPass = self._do_region_selection(thickness)
+            self.indicesFirstPass = self._do_region_selection(thickness, self.pos)
 
             self.max_search_radius = np.max(self.search_radius[self.indicesFirstPass])
             thickness = self.hsml + self.max_search_radius
-            self.index = self._do_region_selection(thickness)
+            self.index = self._do_region_selection(thickness, self.pos)
 
         self._send_variable_to_gpu(self.pos, gpu_key='pos')
         self._send_variable_to_gpu(self.hsml, gpu_key='hsml')

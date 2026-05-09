@@ -20,10 +20,20 @@ class PotentialEnergy(DataGpuInit):
         
         super().__init__(snap, center, widths, orientation=orientation, npix=npix, threadsperblock=threadsperblock)
 
-    # def _prepare_data(self):
 
         self.__dict__.update(kwargs)
-    # def _prepare_data(self):
+
+        if 'pos' not in self.__dict__:
+            print("No `pos' argument given. Defaults to gas particles")
+            self.pos = self.snap["0_Coordinates"]
+        else:
+            self.pos = self.__dict__['pos']
+            assert self.pos.unit == self.code_length.unit, 'this restriction applies'
+
+        if 'smoothing_length' not in self.__dict__:
+            raise ValueError("Please provide smoothing_length")
+        smoothing_length = self.__dict__['smoothing_length']
+            
 
         if 'mass' not in self.__dict__:
             raise ValueError("Please provide masses")
@@ -31,18 +41,11 @@ class PotentialEnergy(DataGpuInit):
         mass = self.__dict__['mass']
         self.code_mass = code_mass = mass.uq
 
-        if 'smoothing_length' not in self.__dict__:
-            raise ValueError("Please provide smoothing_length")
-        smoothing_length = self.__dict__['smoothing_length']
-
         if hasattr(smoothing_length, 'unit'):
-            assert smoothing_length.unit == code_length.unit, 'this restriction applies'
+            assert smoothing_length.unit == self.code_length.unit, 'this restriction applies'
         elif pa.settings.use_units:
-            smoothing_length = smoothing_length * code_length
+            smoothing_length = smoothing_length * self.code_length
             # raise RuntimeError('smoothing_length must have unit')
-
-        if isinstance(smoothing_length.value, np.ndarray):
-            assert smoothing_length.shape[0] == self.index.shape[0]
 
         if hasattr(mass, 'unit'):
             assert mass.unit == code_mass.unit, 'this restriction applies'
@@ -61,8 +64,8 @@ class PotentialEnergy(DataGpuInit):
             mass = np.ones(self.pos.shape[0]) * mass.value
 
         if (self.cartesian):
-            thickness = np.zeros(self.pos.shape[0])*code_length
-            self.index = self._do_region_selection(thickness)
+            thickness = np.zeros(self.pos.shape[0])*self.code_length
+            self.index = self._do_region_selection(thickness, self.pos)
 
         ## requires selection of the region
         self._send_variable_to_gpu(self.pos, gpu_key='pos')
@@ -94,8 +97,6 @@ class PotentialEnergy(DataGpuInit):
 
         # finds max smoothing length in each tile
         self.tile.max_hsml_per_tile = self.tile.findmax_per_tile(self.gpu_variables['smoothing_length'])
-
-        nvtx.end_range(rng0)
 
         self.G = G = pa.astropy.constants.G
 
