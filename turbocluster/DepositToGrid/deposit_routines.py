@@ -146,8 +146,8 @@ class DepositCartesianGrid(DataGpuInit):
                             scratch, kernel_type)
         nvtx.end_range(rng)
 
-        self.scratch = scratch
-        self.deposited_var = deposited_var
+        # self.scratch = scratch
+        # self.deposited_var = deposited_var
         
         # return cp.asnumpy(deposited_var/scratch)
         if (np.argwhere(deposited_var==0.0).size > 0):
@@ -156,132 +156,6 @@ class DepositCartesianGrid(DataGpuInit):
         # return cp.asnumpy(cp.where(scratch>0,deposited_var/scratch,0.0))
         return cp.asnumpy(deposited_var)
 
-    def power_spectrum1d(self, deposited_variable, **kwargs):
-        """
-        kwargs:
-            window : 1D window generation function
-               The window function should accept one argument: the window length.
-               Example: window=scipy.signal.windows.hann
-        """
-        
-        Nx, Ny, Nz = deposited_variable.shape
-
-        if pa.settings.use_units:
-        # if hasattr(self.widths, 'unit'):
-            Lx, Ly, Lz = self.widths.value
-            L_unit = self.widths.unit
-        else:
-            Lx, Ly, Lz = self.widths
-
-        if pa.settings.use_units:
-            depo_variable = deposited_variable.value.copy()
-            variable_unit = deposited_variable.unit
-        else:
-            depo_variable = deposited_variable.copy()
-
-        voxel_real_space = (Lx/Nx)*(Ly/Ny)*(Lz/Nz)        
-        energy_real_space = np.sum(depo_variable**2*voxel_real_space)
-        print('energy (real space) = %.4e'%(energy_real_space))
-
-        # this is for consistency with zero-padding
-        if 'npads' in kwargs:
-            Nx *= int(kwargs['npads'])
-            Ny *= int(kwargs['npads'])
-            Nz *= int(kwargs['npads'])
-            Lx *= int(kwargs['npads'])
-            Ly *= int(kwargs['npads'])
-            Lz *= int(kwargs['npads'])
-
-        # this is if we want to do windowing
-        if 'window' in kwargs:
-            depo_variable, ndim_window = nd_window(depo_variable, 
-                                             kwargs["window"])
-            
-        # Send variable to gpu
-        d_depo_variable = cp.array(depo_variable)
-            
-        hat_depo_variable = cp.fft.rfftn(d_depo_variable, s=(Nx,Ny,Nz))
-        Ntotalcomplex = Nx*Ny*Nz
-        
-        ## create the wavevectors
-        kx = 2.0*np.pi*np.fft.fftfreq(Nx, d=Lx/Nx)
-        ky = 2.0*np.pi*np.fft.fftfreq(Ny, d=Ly/Ny)
-        kz = 2.0*np.pi*np.fft.rfftfreq(Nz, d=Lz/Nz)
-        
-        KX, KY, KZ = np.meshgrid(kx, ky, kz, indexing='ij')
-            
-        K2 = KX**2 + KY**2 + KZ**2
-
-        kvec = np.sqrt(KX**2 + KY**2 + KZ**2)
     
-        kxmax = (2.0*np.pi/Lx)*(Nx//2)
-        kymax = (2.0*np.pi/Ly)*(Ny//2)
-        kzmax = (2.0*np.pi/Lz)*(Nz//2)
-    
-        kmax = np.sqrt(kxmax**2 + kymax**2 + kzmax**2)
-        # I take the coarsest grid in k-space
-        deltak = 2.0*np.pi/np.min([Lx,Ly,Lz])
-        # this is to take into account that with zero-padding
-        # Lx,Ly,Lz are greater but we still want to keep the
-        # coarser base-grid for the power spectrum
-        if 'npads' in kwargs:
-            deltak *= int(kwargs['npads'])
-
-        self.deltak = deltak
-
-        nbin = int(kmax/deltak + 0.5)
-        n1d = np.arange(0, nbin)
-        k1d = deltak*n1d
-    
-        ## these are now the *wavenumbers*
-        ## (not wavevectors) 
-        wavenum = kvec / deltak
-        ## store them on device
-        d_wavenum = cp.array(wavenum)  
-        
-        d_powerspectr = cp.zeros(k1d.shape)
-        blocks_1d = (Ntotalcomplex + (self.threadsperblock - 1)) // self.threadsperblock
-
-        ## launch kernel
-        gpu_power_spectrum1d[blocks_1d, self.threadsperblock](hat_depo_variable, d_wavenum, 
-                                                              (Nx,Ny,Nz), 
-                                                              d_powerspectr)
-
-        powerspectr = cp.asnumpy(d_powerspectr)*(Lx*Ly*Lz)*(2.0*np.pi/deltak) ## for energy/frequency
-        # powerspectr = cp.asnumpy(d_powerspectr)*(2.0*np.pi/deltak)    ## for energy/volume/frequency
-        
-        if 'window' in kwargs: ## for normalization with window function
-            powerspectr /= np.sum(np.square(ndim_window))/(Nx*Ny*Nz)
-        # if 'npads' in kwargs: # this is for consistency with zero-padding
-        #     powerspectr *= int(kwargs['npads'])**3
-    
-        energy_fourier_space = np.sum(powerspectr*deltak/(2.0*np.pi))
-        print('energy (fourier space) = %.4e'%(energy_fourier_space))
-        
-        if pa.settings.use_units:
-            k1d /= L_unit
-            powerspectr *= L_unit**4 # (for energy/frequency: 3 powers for Lx*Ly*Lz + 1 power for 1/deltak)
-            # powerspectr *= L_unit # (for energy/volume/frequency: 1 power for 1/deltak)
-            powerspectr *= variable_unit**2
-        
-        
-        return powerspectr, k1d, (KX, KY, KZ, cp.asnumpy(hat_depo_variable))
 
         
-
-    # def __enter__(self):
-    #     return self
-
-    # def __exit__(self, exc_type, exc_val, exc_tb):
-    #     print("bye")
-    #     del self.deposited_var
-    #     del self.scratch
-    #     del self.gpu_variables
-    #     del self.index
-    #     del self.pos
-    #     del self.hsml
-    #     del self.snap
-    #     del self.support
-    #     del self.off_sets
-    #     del self.center
-    #     del self.widths
