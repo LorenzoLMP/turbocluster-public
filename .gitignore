@@ -4,7 +4,7 @@ examples/.ipynb_checkpoints
 plots/
 *.pdf
 *.npz
-
+**/__pycache__/
 # do not ignore latex document
 !latex-notes/notex.pdf
 
