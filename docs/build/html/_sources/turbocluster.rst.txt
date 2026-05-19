@@ -1,0 +1,37 @@
+turbocluster package
+====================
+
+Submodules
+----------
+
+turbocluster.cartesian\_tiling module
+-------------------------------------
+
+.. automodule:: turbocluster.cartesian_tiling
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+turbocluster.data\_init module
+------------------------------
+
+.. automodule:: turbocluster.data_init
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+turbocluster.helper\_functions module
+-------------------------------------
+
+.. automodule:: turbocluster.helper_functions
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+Module contents
+---------------
+
+.. automodule:: turbocluster
+   :members:
+   :show-inheritance:
+   :undoc-members:
