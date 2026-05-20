@@ -8,13 +8,14 @@ import nvtx
 
 from .cartesian_tiling import CartesianTiling
 
+
 class DataGpuInit:
     """
     """
 
     def __init__(self, snap, center, widths, orientation=None, threadsperblock=256, **kwargs):
         """
-        
+
         """
 
         # self.__dict__.update(kwargs)
@@ -61,14 +62,14 @@ class DataGpuInit:
         rng = nvtx.start_range(message="region_selection")
         if self.orientation is None:
             get_index = pa.util.get_index_of_cubic_region_plus_thin_layer
-            indices = get_index(pos,center, widths, thickness, snap.box)
+            indices = get_index(pos, center, widths, thickness, snap.box)
         else:
             get_index = pa.util.get_index_of_rotated_cubic_region_plus_thin_layer
-            indices = get_index(pos, center, widths, thickness, snap.box, self.orientation)
+            indices = get_index(pos, center, widths,
+                                thickness, snap.box, self.orientation)
         nvtx.end_range(rng)
 
         return indices
-            
 
     def _send_variable_to_gpu(self, variable, gpu_key='input_variable', sort=False):
         if isinstance(variable, str):
@@ -101,7 +102,8 @@ class DataGpuInit:
                     self.gpu_variables[variable_str] = self.gpu_variables[variable_str][
                         self.tile.sort_index]
             except:
-                raise RuntimeError("Sorted can be done only after creating a CartesianTiling")
+                raise RuntimeError(
+                    "Sorted can be done only after creating a CartesianTiling")
 
         if isinstance(variable, pa.units.PaicosQuantity):
             unit_quantity = variable.unit_quantity
@@ -113,12 +115,15 @@ class DataGpuInit:
     def _rotate_coordinates(self):
 
         if self.orientation is not None:
-            if 'inverse_rotation_matrix' not in self.gpu_variables: 
-                self.gpu_variables['inverse_rotation_matrix'] = cp.array(self.orientation.inverse_rotation_matrix)
+            if 'inverse_rotation_matrix' not in self.gpu_variables:
+                self.gpu_variables['inverse_rotation_matrix'] = cp.array(
+                    self.orientation.inverse_rotation_matrix)
 
-                self.gpu_variables['pos'] = cp.matmul(self.gpu_variables['inverse_rotation_matrix'], self.gpu_variables['pos'], axes=[(-2, -1), (-1, -2), (-1, -2)])
+                self.gpu_variables['pos'] = cp.matmul(
+                    self.gpu_variables['inverse_rotation_matrix'], self.gpu_variables['pos'], axes=[(-2, -1), (-1, -2), (-1, -2)])
 
-                self.gpu_variables['center'] = cp.matmul(self.gpu_variables['inverse_rotation_matrix'], self.gpu_variables['center'])
+                self.gpu_variables['center'] = cp.matmul(
+                    self.gpu_variables['inverse_rotation_matrix'], self.gpu_variables['center'])
 
     def __del__(self):
         """
@@ -140,6 +145,7 @@ class DataGpuInit:
 
     def __enter__(self):
         return self
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         print("bye")
         self.__del__()

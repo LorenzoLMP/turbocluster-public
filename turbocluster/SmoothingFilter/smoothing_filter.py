@@ -17,9 +17,11 @@ from ..helper_functions import *
 class SmoothingFilter(DataGpuInit):
     """
     """
+
     def __init__(self, snap, center, widths, orientation=None, npix=128, threadsperblock=256, **kwargs):
-        
-        super().__init__(snap, center, widths, orientation=orientation, threadsperblock=threadsperblock)
+
+        super().__init__(snap, center, widths,
+                         orientation=orientation, threadsperblock=threadsperblock)
 
         self.__dict__.update(kwargs)
 
@@ -37,7 +39,7 @@ class SmoothingFilter(DataGpuInit):
         if 'hsml' not in self.__dict__:
             print("No `hsml' argument given. Defaults to gas particles")
             # Calculate the smoothing length
-            ## this is the radius of the 'spherical' voronoi cell
+            # this is the radius of the 'spherical' voronoi cell
             self.hsml = np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
         else:
             self.hsml = self.__dict__['hsml']
@@ -48,11 +50,11 @@ class SmoothingFilter(DataGpuInit):
         if search_radius is None:
             search_radius = 10.0 * self.hsml
         elif not hasattr(search_radius, 'unit'):
-            search_radius = search_radius*self.code_length
+            search_radius = search_radius * self.code_length
 
         if not isinstance(search_radius.value, np.ndarray):
             # it is not a vector already
-            search_radius = np.ones(self.hsml.shape)*search_radius
+            search_radius = np.ones(self.hsml.shape) * search_radius
         else:
             assert search_radius.shape[0] == self.hsml.shape[0]
 
@@ -61,18 +63,21 @@ class SmoothingFilter(DataGpuInit):
         if pa.settings.use_units:
             # use units
             assert search_radius.unit == self.code_length.unit, 'this restriction applies'
-            self.search_radius = 1.1*self.multiplier*search_radius
+            self.search_radius = 1.1 * self.multiplier * search_radius
         else:
             # does not need units
-            self.search_radius = 1.1*self.multiplier*np.array(search_radius)
+            self.search_radius = 1.1 * \
+                self.multiplier * np.array(search_radius)
 
-        ## This selects the region 
+        # This selects the region
         # rng = nvtx.start_range(message="region_selection")
         if (self.cartesian):
-            thickness = self.hsml 
-            self.indicesFirstPass = self._do_region_selection(thickness, self.pos)
+            thickness = self.hsml
+            self.indicesFirstPass = self._do_region_selection(
+                thickness, self.pos)
 
-            self.max_search_radius = np.max(self.search_radius[self.indicesFirstPass])
+            self.max_search_radius = np.max(
+                self.search_radius[self.indicesFirstPass])
             thickness = self.hsml + self.max_search_radius
             self.index = self._do_region_selection(thickness, self.pos)
 
@@ -84,13 +89,15 @@ class SmoothingFilter(DataGpuInit):
 
         self._rotate_coordinates()
 
-        self.extra_layer_thickness = np.max(self.hsml[self.index]) + self.max_search_radius
+        self.extra_layer_thickness = np.max(
+            self.hsml[self.index]) + self.max_search_radius
         if pa.settings.use_units:
             self.extra_layer_thickness = self.extra_layer_thickness.value
-    
+
         # Create tiling
         if (self.cartesian):
-            self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'], self.gpu_variables['widths'], self.extra_layer_thickness, npix=self.npix, threadsperblock=self.threadsperblock)
+            self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'], self.gpu_variables['widths'],
+                                        self.extra_layer_thickness, npix=self.npix, threadsperblock=self.threadsperblock)
             self.tile.sort_particles_in_tiles()
 
         # Do the sorting
@@ -101,20 +108,22 @@ class SmoothingFilter(DataGpuInit):
 
         self.Np = Np = self.gpu_variables['pos'].shape[0]
 
-        self.blocks_1d = (Np + (self.threadsperblock - 1)) // self.threadsperblock
+        self.blocks_1d = (Np + (self.threadsperblock - 1)
+                          ) // self.threadsperblock
 
     def filter_variable(self, variable, filter_length, weight=None, filter_type="mean", iterative=False, selection=None):
         """
         variable can also be a vector
         """
-            
+
         rng0 = nvtx.start_range(message="do_filter")
 
         if isinstance(variable, str):
             variable = self.snap[variable]
 
         # variable can also be a vector
-        variable_str, unit_quantity = self._send_variable_to_gpu(variable, sort=True)
+        variable_str, unit_quantity = self._send_variable_to_gpu(
+            variable, sort=True)
 
         if weight is not None:
             self._send_variable_to_gpu(weight, gpu_key='weight', sort=True)
@@ -125,22 +134,26 @@ class SmoothingFilter(DataGpuInit):
         # send filter_length to gpu
         if isinstance(filter_length.value, np.ndarray):
             assert filter_length.shape[0] == self.index.shape[0]
-            self._send_variable_to_gpu(filter_length, gpu_key='filter_lengths', sort=True)
+            self._send_variable_to_gpu(
+                filter_length, gpu_key='filter_lengths', sort=True)
         else:
-            self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length.value
+            self.gpu_variables['filter_lengths'] = cp.ones(
+                self.Np) * filter_length.value
 
         if selection is not None:
-            self._send_variable_to_gpu(selection*self.snap.uq(''), gpu_key='selection', sort=True)
+            self._send_variable_to_gpu(
+                selection * self.snap.uq(''), gpu_key='selection', sort=True)
 
         # Do the filtering
         # do the optimized by default
-        smooth_variable = self._apply_filter_gpu_optimized(variable_str, weight, filter_type, iterative)
+        smooth_variable = self._apply_filter_gpu_optimized(
+            variable_str, weight, filter_type, iterative)
 
         if unit_quantity is not None:
             smooth_variable = smooth_variable * unit_quantity
 
         nvtx.end_range(rng0)
-        
+
         return smooth_variable
 
     def _apply_filter_gpu_optimized(self, variable_str, weight, filter_type, iterative):
@@ -153,8 +166,7 @@ class SmoothingFilter(DataGpuInit):
         the tiles that *overlap* with the filtering radius of each particle
         are selected, without wasting time looping over those that do not
         """
-    
-            
+
         pos = self.gpu_variables['pos']
         hsml = self.gpu_variables['hsml']
         # - self.tile.off_sets[None,:]
@@ -169,7 +181,7 @@ class SmoothingFilter(DataGpuInit):
         offsets = self.tile.off_sets
         filter_lengths = self.gpu_variables['filter_lengths']
 
-        max_search_radius = self.max_search_radius.value/self.multiplier
+        max_search_radius = self.max_search_radius.value / self.multiplier
 
         if filter_type == "mean":
             filter_type = 0
@@ -178,10 +190,9 @@ class SmoothingFilter(DataGpuInit):
         elif filter_type == "mexican-hat":
             filter_type = 2
 
-        iterativeFilter = 0 # not iterative
+        iterativeFilter = 0  # not iterative
         if iterative:
-            iterativeFilter = 1 # iterative
-        
+            iterativeFilter = 1  # iterative
 
         if cp.max(filter_lengths) > self.extra_layer_thickness:
             err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
@@ -193,69 +204,76 @@ class SmoothingFilter(DataGpuInit):
             weights = cp.ones(pos.shape[0])
 
         isParticleInDomain = cp.zeros(pos.shape[0])
-        
-        check_particle[self.blocks_1d, self.threadsperblock](pos, hsml, center, widths, isParticleInDomain)
+
+        check_particle[self.blocks_1d, self.threadsperblock](
+            pos, hsml, center, widths, isParticleInDomain)
 
         if 'selection' in self.gpu_variables.keys():
-            ## if we want to filter only a selection of the domain
+            # if we want to filter only a selection of the domain
             isParticleInSelection = self.gpu_variables['selection']
             isParticleInDomain *= isParticleInSelection
-                   
+
         self.isParticleInDomain = isParticleInDomain
         cumulative_occupancy = cp.cumsum(isParticleInDomain)
         numParticlesInDomain = int(cumulative_occupancy[-1])
-        oldIndex = cp.zeros(numParticlesInDomain,dtype=int)
-        
+        oldIndex = cp.zeros(numParticlesInDomain, dtype=int)
+
         compactify_particles[self.blocks_1d, self.threadsperblock](pos, tile_index,
-                                        cumulative_occupancy.flatten(), isParticleInDomain, 
-                                        oldIndex)
+                                                                   cumulative_occupancy.flatten(), isParticleInDomain,
+                                                                   oldIndex)
         self.oldIndex = oldIndex
-        
-        blocks_1d = (numParticlesInDomain + (self.threadsperblock - 1)) // self.threadsperblock
-        
+
+        blocks_1d = (numParticlesInDomain
+                     + (self.threadsperblock - 1)) // self.threadsperblock
+
         smooth_var = cp.zeros_like(variable)
-        hitsNeighbours = cp.zeros(pos.shape[0],dtype="int")
+        hitsNeighbours = cp.zeros(pos.shape[0], dtype="int")
         # isParticleInDomain = cp.zeros(variable.shape,dtype="int")
-        hasConverged = cp.zeros(pos.shape[0],dtype="int")
-        numIterations = cp.zeros(pos.shape[0],dtype="int")
-        filter_lengths_out = cp.zeros(pos.shape[0],dtype="float")
+        hasConverged = cp.zeros(pos.shape[0], dtype="int")
+        numIterations = cp.zeros(pos.shape[0], dtype="int")
+        filter_lengths_out = cp.zeros(pos.shape[0], dtype="float")
 
         rng = nvtx.start_range(message="cartesian filter (optimized)")
         # check if it is a vector:
         if (len(variable.shape) > 1):
             # is a vector
-            # TODO: change definition of apply_filter 
-            apply_filter_optimized_vector[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths, variable[:,0], variable[:,1], variable[:,2], weights, offsets, npixs, center, widths, filter_lengths, smooth_var[:,0], smooth_var[:,1], smooth_var[:,2], filter_type, hitsNeighbours,isParticleInDomain, iterativeFilter, hasConverged, numIterations, filter_lengths_out, self.multiplier, max_search_radius)
-            
+            # TODO: change definition of apply_filter
+            apply_filter_optimized_vector[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths, variable[:, 0], variable[:, 1], variable[:, 2], weights, offsets, npixs, center,
+                                                                           widths, filter_lengths, smooth_var[:, 0], smooth_var[:, 1], smooth_var[:, 2], filter_type, hitsNeighbours, isParticleInDomain, iterativeFilter, hasConverged, numIterations, filter_lengths_out, self.multiplier, max_search_radius)
+
         else:
             # is a scalar
-            apply_filter_optimized[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,variable, weights, offsets, npixs, center, widths, filter_lengths, smooth_var, filter_type, hitsNeighbours, isParticleInDomain, iterativeFilter, hasConverged,numIterations, filter_lengths_out, self.multiplier,max_search_radius)
-        
+            apply_filter_optimized[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths, variable, weights, offsets, npixs, center,
+                                                                    widths, filter_lengths, smooth_var, filter_type, hitsNeighbours, isParticleInDomain, iterativeFilter, hasConverged, numIterations, filter_lengths_out, self.multiplier, max_search_radius)
+
         nvtx.end_range(rng)
 
         self.hitsNeighbours = hitsNeighbours
         self.hitsNeighboursUnSorted = hitsNeighbours[self.tile.unsort_index]
         self.isParticleInDomainUnSorted = isParticleInDomain[self.tile.unsort_index]
         self.hasConvergedUnSorted = hasConverged[self.tile.unsort_index]
-        
+
         if iterative:
             self.filter_lengths_out = filter_lengths_out[self.tile.unsort_index]
             self.numIterationsUnSorted = numIterations[self.tile.unsort_index]
             tot_particles_domain = np.sum(self.isParticleInDomainUnSorted)
-            num_part_converg = np.sum(self.hasConvergedUnSorted[self.isParticleInDomainUnSorted>0])
-            percent_converg = num_part_converg/tot_particles_domain
-            print("%.2f percent of particles (%d / %d) has converged"%(percent_converg*100,num_part_converg,tot_particles_domain))
-            mean_iter = np.mean(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])
-            std_iter = np.std(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])
-            print("Number iterations needed: %.2f (+/- %.2f)"%(mean_iter,std_iter))
-            print("Min/Max iterations needed: %d / %d"%(np.min(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0]), np.max(self.numIterationsUnSorted[self.isParticleInDomainUnSorted>0])))
-        
-        
+            num_part_converg = np.sum(
+                self.hasConvergedUnSorted[self.isParticleInDomainUnSorted > 0])
+            percent_converg = num_part_converg / tot_particles_domain
+            print("%.2f percent of particles (%d / %d) has converged" %
+                  (percent_converg * 100, num_part_converg, tot_particles_domain))
+            mean_iter = np.mean(
+                self.numIterationsUnSorted[self.isParticleInDomainUnSorted > 0])
+            std_iter = np.std(
+                self.numIterationsUnSorted[self.isParticleInDomainUnSorted > 0])
+            print("Number iterations needed: %.2f (+/- %.2f)" %
+                  (mean_iter, std_iter))
+            print("Min/Max iterations needed: %d / %d" % (np.min(self.numIterationsUnSorted[self.isParticleInDomainUnSorted > 0]), np.max(
+                self.numIterationsUnSorted[self.isParticleInDomainUnSorted > 0])))
+
         return cp.asnumpy(smooth_var[self.tile.unsort_index])
 
-    
-
-    def derivative_variable(self, variable, filter_length, weight=None, filter_type="gaussian", 
+    def derivative_variable(self, variable, filter_length, weight=None, filter_type="gaussian",
                             iterative=False, optimized=True, selection=None):
         """
         This function computes the derivative of a smoothed variable
@@ -272,11 +290,13 @@ class SmoothingFilter(DataGpuInit):
         if (iterative):
             raise RuntimeError('derivative has no iterative option')
         if (weight is not None):
-            print('Derivative does not support weighted integration. Argument will be ignored')
-            
+            print(
+                'Derivative does not support weighted integration. Argument will be ignored')
+
         rng0 = nvtx.start_range(message="do_filter")
-        
-        variable_str, unit_quantity = self._send_variable_to_gpu(variable, sort=True)
+
+        variable_str, unit_quantity = self._send_variable_to_gpu(
+            variable, sort=True)
 
         if not hasattr(filter_length, 'unit'):
             raise RuntimeError('filter_length must have unit')
@@ -285,32 +305,35 @@ class SmoothingFilter(DataGpuInit):
         # send filter_length to gpu
         if isinstance(filter_length.value, np.ndarray):
             assert filter_length.shape[0] == self.index.shape[0]
-            self._send_variable_to_gpu(filter_length, gpu_key='filter_lengths', sort=True)
+            self._send_variable_to_gpu(
+                filter_length, gpu_key='filter_lengths', sort=True)
         else:
-            self.gpu_variables['filter_lengths'] = cp.ones(self.Np) * filter_length.value
+            self.gpu_variables['filter_lengths'] = cp.ones(
+                self.Np) * filter_length.value
 
         if selection is not None:
-            self._send_variable_to_gpu(selection*self.snap.uq(''), gpu_key='selection', sort=True)
+            self._send_variable_to_gpu(
+                selection * self.snap.uq(''), gpu_key='selection', sort=True)
 
         # Compute the gradient in x, y, z
         # grad_var is a 3-dim vector
         grad_var = self._apply_derivative_gpu(variable_str, filter_type)
-        
+
         if unit_quantity is not None:
             grad_var = grad_var * unit_quantity / filt_length_unit
 
         nvtx.end_range(rng0)
-        
+
         return grad_var
 
     def _apply_derivative_gpu(self, variable_str, filter_type):
         """
-        
+
         """
 
         if (filter_type != "gaussian"):
             raise RuntimeError('derivative currently has only gaussian')
-            
+
         pos = self.gpu_variables['pos']
         hsml = self.gpu_variables['hsml']
         # - self.tile.off_sets[None,:]
@@ -325,68 +348,68 @@ class SmoothingFilter(DataGpuInit):
         offsets = self.tile.off_sets
         filter_lengths = self.gpu_variables['filter_lengths']
 
-        max_search_radius = self.max_search_radius.value/self.multiplier
-        
+        max_search_radius = self.max_search_radius.value / self.multiplier
+
         if filter_type == "mean":
             filter_type = 0
         elif filter_type == "gaussian":
             filter_type = 1
         elif filter_type == "mexican-hat":
             filter_type = 2
-       
 
         if cp.max(filter_lengths) > self.extra_layer_thickness:
             err_msg = f"{cp.max(filter_lengths)} is larger than {self.extra_layer_thickness}"
             raise RuntimeError(err_msg)
 
         isParticleInDomain = cp.zeros(pos.shape[0])
-        
-        check_particle[self.blocks_1d, self.threadsperblock](pos, hsml, center, widths, isParticleInDomain)
+
+        check_particle[self.blocks_1d, self.threadsperblock](
+            pos, hsml, center, widths, isParticleInDomain)
 
         if 'selection' in self.gpu_variables.keys():
-            ## if we want to filter only a selection of the domain
+            # if we want to filter only a selection of the domain
             isParticleInSelection = self.gpu_variables['selection']
             isParticleInDomain *= isParticleInSelection
-                   
+
         self.isParticleInDomain = isParticleInDomain
         cumulative_occupancy = cp.cumsum(isParticleInDomain)
         numParticlesInDomain = int(cumulative_occupancy[-1])
-        oldIndex = cp.zeros(numParticlesInDomain,dtype=int)
-        
+        oldIndex = cp.zeros(numParticlesInDomain, dtype=int)
+
         compactify_particles[self.blocks_1d, self.threadsperblock](pos, tile_index,
-                                        cumulative_occupancy.flatten(), isParticleInDomain, 
-                                        oldIndex)
+                                                                   cumulative_occupancy.flatten(), isParticleInDomain,
+                                                                   oldIndex)
         self.oldIndex = oldIndex
-        
-        blocks_1d = (numParticlesInDomain + (self.threadsperblock - 1)) // self.threadsperblock
-        
+
+        blocks_1d = (numParticlesInDomain
+                     + (self.threadsperblock - 1)) // self.threadsperblock
+
         new_shape = [i for i in variable.shape]
         new_shape.append(3)
         grad_var = cp.zeros(new_shape)
-        
-        hitsNeighbours = cp.zeros(variable.shape[0],dtype="int")
-        hasConverged = cp.zeros(variable.shape[0],dtype="int")
+
+        hitsNeighbours = cp.zeros(variable.shape[0], dtype="int")
+        hasConverged = cp.zeros(variable.shape[0], dtype="int")
 
         rng = nvtx.start_range(message="cartesian filter (optimized)")
 
         # check if it is a vector:
         if (len(variable.shape) > 1):
             # is a vector
-            apply_derivative_vector[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths, variable[:,0], variable[:,1], variable[:,2], offsets, npixs, center, widths, filter_lengths, grad_var[:,0,0], grad_var[:,1,0], grad_var[:,2,0], grad_var[:,0,1], grad_var[:,1,1], grad_var[:,2,1], grad_var[:,0,2], grad_var[:,1,2], grad_var[:,2,2], filter_type, hitsNeighbours, isParticleInDomain, hasConverged, self.multiplier)
+            apply_derivative_vector[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths, variable[:, 0], variable[:, 1], variable[:, 2], offsets, npixs, center, widths, filter_lengths, grad_var[:, 0, 0],
+                                                                     grad_var[:, 1, 0], grad_var[:, 2, 0], grad_var[:, 0, 1], grad_var[:, 1, 1], grad_var[:, 2, 1], grad_var[:, 0, 2], grad_var[:, 1, 2], grad_var[:, 2, 2], filter_type, hitsNeighbours, isParticleInDomain, hasConverged, self.multiplier)
         else:
             # is a scalar
-            apply_derivative[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths,variable, offsets, npixs, center, widths, filter_lengths, grad_var[:,0], grad_var[:,1], grad_var[:,2], filter_type, hitsNeighbours, isParticleInDomain, hasConverged, self.multiplier)
-        
+            apply_derivative[blocks_1d, self.threadsperblock](oldIndex, pos, hsml, tile_index, start_index_for_tile, particles_per_tile, tile_widths, variable, offsets, npixs,
+                                                              center, widths, filter_lengths, grad_var[:, 0], grad_var[:, 1], grad_var[:, 2], filter_type, hitsNeighbours, isParticleInDomain, hasConverged, self.multiplier)
+
         nvtx.end_range(rng)
 
         self.hitsNeighbours = hitsNeighbours
         self.hitsNeighboursUnSorted = hitsNeighbours[self.tile.unsort_index]
         self.isParticleInDomainUnSorted = isParticleInDomain[self.tile.unsort_index]
         self.hasConvergedUnSorted = hasConverged[self.tile.unsort_index]
-        
 
         grad_var = cp.asnumpy(grad_var[self.tile.unsort_index])
-        
-        return grad_var 
 
-    
+        return grad_var

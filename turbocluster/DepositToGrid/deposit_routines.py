@@ -14,14 +14,17 @@ from ..cartesian_tiling import CartesianTiling
 class DepositCartesianGrid(DataGpuInit):
     """
     """
+
     def __init__(self, snap, center, widths, orientation=None, npix=128, threadsperblock=256, **kwargs):
-        
-        super().__init__(snap, center, widths, orientation=orientation, threadsperblock=threadsperblock)
+
+        super().__init__(snap, center, widths,
+                         orientation=orientation, threadsperblock=threadsperblock)
 
         self.__dict__.update(kwargs)
 
         if 'kernel_type' not in self.__dict__:
-            raise ValueError("Please provide kernel type. Possible options are: NGP, CIC, TSC, PCS.")
+            raise ValueError(
+                "Please provide kernel type. Possible options are: NGP, CIC, TSC, PCS.")
         kernel_type = self.__dict__['kernel_type']
 
         # if 'npoints' not in self.__dict__:
@@ -39,9 +42,10 @@ class DepositCartesianGrid(DataGpuInit):
         if 'hsml' not in self.__dict__:
             print("No `hsml' argument given. Defaults to gas particles")
             # Calculate the smoothing length
-            ## this is the radius of the 'spherical' voronoi cell
-            # test with 4 times radius 
-            self.hsml = 4.0 * np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
+            # this is the radius of the 'spherical' voronoi cell
+            # test with 4 times radius
+            self.hsml = 4.0 * \
+                np.cbrt((self.snap["0_Volume"]) / (4.0 * np.pi / 3.0))
         else:
             self.hsml = self.__dict__['hsml']
 
@@ -60,7 +64,7 @@ class DepositCartesianGrid(DataGpuInit):
             self.support = 3
 
         if (self.cartesian):
-            thickness = self.support*self.hsml 
+            thickness = self.support * self.hsml
             self.index = self._do_region_selection(thickness, self.pos)
 
         self._send_variable_to_gpu(self.pos, gpu_key='pos')
@@ -71,29 +75,30 @@ class DepositCartesianGrid(DataGpuInit):
 
         self._rotate_coordinates()
 
-        self.extra_layer_thickness = self.support*np.max(self.hsml[self.index])
+        self.extra_layer_thickness = self.support * \
+            np.max(self.hsml[self.index])
         if pa.settings.use_units:
             self.extra_layer_thickness = self.extra_layer_thickness.value
 
         # Create tiling
         if (self.cartesian):
-            self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'], self.gpu_variables['widths'], 0.0, npix=npix, threadsperblock=threadsperblock)
-
+            self.tile = CartesianTiling(self.gpu_variables['pos'], self.gpu_variables['center'],
+                                        self.gpu_variables['widths'], 0.0, npix=npix, threadsperblock=threadsperblock)
 
         self.npoints = self.tile.npixs + 1
 
-        
         self.Np = Np = self.gpu_variables['pos'].shape[0]
 
-        self.blocks_1d = (Np + (self.threadsperblock - 1)) // self.threadsperblock
+        self.blocks_1d = (Np + (self.threadsperblock - 1)
+                          ) // self.threadsperblock
 
     def deposit_variable(self, variable, weight=None):
         """
-        
+
         """
-            
+
         rng0 = nvtx.start_range(message="do_deposition")
-        
+
         variable_str, unit_quantity = self._send_variable_to_gpu(variable)
 
         if weight is not None:
@@ -105,7 +110,7 @@ class DepositCartesianGrid(DataGpuInit):
             deposited_variable = deposited_variable * unit_quantity
 
         nvtx.end_range(rng0)
-        
+
         return deposited_variable
 
     def _do_deposition_gpu(self, variable_str, weight):
@@ -117,12 +122,12 @@ class DepositCartesianGrid(DataGpuInit):
         variable = self.gpu_variables[variable_str]
         center = self.gpu_variables['center']
         offsets = self.tile.off_sets
-        
+
         if self.cartesian:
             tile_widths = self.tile.tile_widths
             widths = self.gpu_variables['widths']
             npixs = self.tile.npixs
-        
+
         kernel_type = self.support
 
         deposited_var = cp.zeros(self.npoints.tolist(), dtype="float")
@@ -137,25 +142,22 @@ class DepositCartesianGrid(DataGpuInit):
 
         if (len(variable.shape) > 1):
             # is a vector
-            # TODO: 
+            # TODO:
             pass
         else:
             # is a scalar
             deposit_on_grid[self.blocks_1d, self.threadsperblock](pos, hsml, tile_widths,
-                            variable, weights, offsets, npixs, center, widths, deposited_var, 
-                            scratch, kernel_type)
+                                                                  variable, weights, offsets, npixs, center, widths, deposited_var,
+                                                                  scratch, kernel_type)
         nvtx.end_range(rng)
 
         # self.scratch = scratch
         # self.deposited_var = deposited_var
-        
+
         # return cp.asnumpy(deposited_var/scratch)
-        if (np.argwhere(deposited_var==0.0).size > 0):
-            print("Warning: %d grid points have zero values"%(np.argwhere(deposited_var==0.0).size))
-        
+        if (np.argwhere(deposited_var == 0.0).size > 0):
+            print("Warning: %d grid points have zero values" %
+                  (np.argwhere(deposited_var == 0.0).size))
+
         # return cp.asnumpy(cp.where(scratch>0,deposited_var/scratch,0.0))
         return cp.asnumpy(deposited_var)
-
-    
-
-        

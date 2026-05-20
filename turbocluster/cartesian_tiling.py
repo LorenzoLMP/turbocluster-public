@@ -2,6 +2,7 @@ import cupy as cp
 from numba import cuda
 import nvtx
 
+
 @cuda.jit(device=True, inline=True)
 def find_tile_single_dim(particle_pos, nx, tile_width):
     """
@@ -13,7 +14,7 @@ def find_tile_single_dim(particle_pos, nx, tile_width):
 @cuda.jit
 def find_tile_index(pos, npixs, tile_widths, tile_index):
     """
-    
+
     """
     ip = cuda.grid(1)
 
@@ -42,6 +43,7 @@ def get_tile_information(tile_index, particles_per_tile, start_index_for_tile):
         cuda.atomic.min(start_index_for_tile,
                         (ip_tile_x, ip_tile_y, ip_tile_z), ip)
 
+
 @cuda.jit
 def accumulate_quantity_per_tile(tile_index, quantity_per_tile, quantity):
     """
@@ -52,6 +54,7 @@ def accumulate_quantity_per_tile(tile_index, quantity_per_tile, quantity):
         cuda.atomic.add(quantity_per_tile,
                         (ip_tile_x, ip_tile_y, ip_tile_z), quantity[ip])
 
+
 @cuda.jit
 def findmax_quantity_per_tile(tile_index, quantity_per_tile, quantity):
     """
@@ -61,32 +64,30 @@ def findmax_quantity_per_tile(tile_index, quantity_per_tile, quantity):
         ip_tile_x, ip_tile_y, ip_tile_z = tile_index[ip, :]
         cuda.atomic.max(quantity_per_tile,
                         (ip_tile_x, ip_tile_y, ip_tile_z), quantity[ip])
-        
+
 
 @cuda.jit
 def compactify_kernel(occupancy_arr, cumulative_occupancy_flat, npixs,
                       Nmax, particles_per_tile,
-                      start_index_for_tile, numBlocksCompactGrid, 
+                      start_index_for_tile, numBlocksCompactGrid,
                       compactGrid):
     """
     """
     ip = cuda.grid(1)
-    numBlocksFullGrid = int(npixs[0]*npixs[1]*npixs[2])
+    numBlocksFullGrid = int(npixs[0] * npixs[1] * npixs[2])
     if (ip < numBlocksFullGrid):
         newPos = int(cumulative_occupancy_flat[ip])
         numBlocksNeeded = int(occupancy_arr[ip])
         # we walk backwards like a shrimp
         for i in range(numBlocksNeeded):
             compactGrid[newPos - 1 - i, 0] = ip
-            compactGrid[newPos - 1 - i, 1] = start_index_for_tile[ip] + (numBlocksNeeded - 1 - i)*Nmax
-            if (i > 0): 
+            compactGrid[newPos - 1 - i, 1] = start_index_for_tile[ip] + \
+                (numBlocksNeeded - 1 - i) * Nmax
+            if (i > 0):
                 compactGrid[newPos - 1 - i, 2] = Nmax
-            else: 
+            else:
                 compactGrid[newPos - 1 - i, 2] = particles_per_tile[ip] - \
-                                                    (numBlocksNeeded - 1) * Nmax
-                                                        
-            
-
+                    (numBlocksNeeded - 1) * Nmax
 
 
 class CartesianTiling:
@@ -98,7 +99,8 @@ class CartesianTiling:
 
         self.Np = Np = positions.shape[0]
 
-        self.blocks_1d  = blocks_1d = (Np + (threadsperblock - 1)) // threadsperblock
+        self.blocks_1d = blocks_1d = (
+            Np + (threadsperblock - 1)) // threadsperblock
         self.threadsperblock = threadsperblock
 
         # Copy positions
@@ -141,16 +143,16 @@ class CartesianTiling:
 
         rng = nvtx.start_range(message="sort_index")
         self.sort_index = cp.argsort(self.tile_index[:, 2] * npix_x * npix_y
-                                     + self.tile_index[:, 1] * npix_x +
-                                     self.tile_index[:, 0])
+                                     + self.tile_index[:, 1] * npix_x
+                                     + self.tile_index[:, 0])
         nvtx.end_range(rng)
-        
+
         unsort_index = cp.zeros(self.Np, dtype=int)
         unsort_index[self.sort_index] = cp.arange(self.Np)
         self.unsort_index = unsort_index
 
         self.tile_index = self.tile_index[self.sort_index, :]
-        
+
         rng = nvtx.start_range(message="get_tile_information")
         get_tile_information[blocks_1d, threadsperblock](
             self.tile_index, self.particles_per_tile,
@@ -167,10 +169,12 @@ class CartesianTiling:
         npix_x = int(self.npixs[0])
         npix_y = int(self.npixs[1])
         npix_z = int(self.npixs[2])
-        
-        quantity_per_tile = cp.zeros((npix_x, npix_y, npix_z), dtype=cp.float64)
-            
-        accumulate_quantity_per_tile[self.blocks_1d, self.threadsperblock](tile_index, quantity_per_tile, quantity)
+
+        quantity_per_tile = cp.zeros(
+            (npix_x, npix_y, npix_z), dtype=cp.float64)
+
+        accumulate_quantity_per_tile[self.blocks_1d, self.threadsperblock](
+            tile_index, quantity_per_tile, quantity)
 
         return quantity_per_tile
 
@@ -184,24 +188,29 @@ class CartesianTiling:
         npix_x = int(self.npixs[0])
         npix_y = int(self.npixs[1])
         npix_z = int(self.npixs[2])
-        
-        quantity_per_tile = cp.zeros((npix_x, npix_y, npix_z), dtype=cp.float64)
-            
-        findmax_quantity_per_tile[self.blocks_1d, self.threadsperblock](tile_index, quantity_per_tile, quantity)
+
+        quantity_per_tile = cp.zeros(
+            (npix_x, npix_y, npix_z), dtype=cp.float64)
+
+        findmax_quantity_per_tile[self.blocks_1d, self.threadsperblock](
+            tile_index, quantity_per_tile, quantity)
 
         return quantity_per_tile
 
     def compactify_grid(self, Nmax):
-        occupancy_arr = ((self.particles_per_tile + (Nmax - 1)) // Nmax).flatten()
+        occupancy_arr = ((self.particles_per_tile
+                          + (Nmax - 1)) // Nmax).flatten()
         cumulative_occupancy = cp.cumsum(occupancy_arr)
         numBlocksCompactGrid = cumulative_occupancy[-1]
-        compactGrid = cp.zeros((int(numBlocksCompactGrid),3),dtype=int)
+        compactGrid = cp.zeros((int(numBlocksCompactGrid), 3), dtype=int)
 
         threadsperblock = 256
-        numBlocksFullGrid = int(self.npixs[0]*self.npixs[1]*self.npixs[2])
-        blocks_1d = (numBlocksFullGrid + (threadsperblock - 1)) // threadsperblock
-        compactify_kernel[blocks_1d, threadsperblock](occupancy_arr,cumulative_occupancy, self.npixs, Nmax, self.particles_per_tile.flatten(), self.start_index_for_tile.flatten(), numBlocksCompactGrid, compactGrid)
-        # compactGrid is an array of 3-tuples numBlocksCompactGrid long. 
+        numBlocksFullGrid = int(self.npixs[0] * self.npixs[1] * self.npixs[2])
+        blocks_1d = (numBlocksFullGrid + (threadsperblock - 1)
+                     ) // threadsperblock
+        compactify_kernel[blocks_1d, threadsperblock](occupancy_arr, cumulative_occupancy, self.npixs, Nmax, self.particles_per_tile.flatten(
+        ), self.start_index_for_tile.flatten(), numBlocksCompactGrid, compactGrid)
+        # compactGrid is an array of 3-tuples numBlocksCompactGrid long.
         # for each block in numBlocksCompactGrid the 3-tuples is as follows
         # [id of the tile in the grid it refers to, id of first particle, num of particles it contains]
 
