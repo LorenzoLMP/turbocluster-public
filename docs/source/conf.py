@@ -65,4 +65,4 @@ autodoc_default_options = {
     "private-members": False
 }
 
-autodoc_mock_imports = ['numba','nvtx']
+autodoc_mock_imports = ['numba','nvtx','cupy']

@@ -1,6 +1,6 @@
 # turbocluster
 
-A GPU-accelerated Python library for filtering Arepo simulations.
+A GPU-accelerated Python library for filtering turbulence in Arepo simulations.
 
 <img src="images/turbocluster_banner.png" width="auto">
 
