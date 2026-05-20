@@ -1,3 +1,5 @@
+[![Documentation Status](https://app.readthedocs.org/projects/turbocluster-public/badge/?version=latest)](https://turbocluster-public.readthedocs.io/en/latest/?badge=latest)
+
 # turbocluster
 
 A GPU-accelerated Python library for filtering turbulence in Arepo simulations.
