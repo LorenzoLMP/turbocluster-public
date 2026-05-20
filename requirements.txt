@@ -7,3 +7,4 @@ numba
 numba-cuda
 paicos >= 0.1.17
 cupy-cuda13x
+nvtx
