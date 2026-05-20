@@ -1,4 +1,4 @@
-[![Documentation Status](https://app.readthedocs.org/projects/turbocluster-public/badge/?version=latest)](https://turbocluster-public.readthedocs.io/en/latest/?badge=latest)
+[![Documentation Status](https://app.readthedocs.org/projects/turbocluster-public/badge/?version=latest)](https://turbocluster-public.readthedocs.io/en/latest/)
 
 # turbocluster
 

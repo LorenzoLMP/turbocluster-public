@@ -8,8 +8,20 @@ maxdepth: 2
 caption: Getting started
 ---
 installation
+examples
 instructions_newton
 ```
+
+
+```{toctree}
+---
+maxdepth: 2
+caption: Notebook examples
+---
+/notebooks/test_smoothing-filter.ipynb
+/notebooks/deposit_to_grid_example.ipynb
+```
+
 
 ```{toctree}
 ---
