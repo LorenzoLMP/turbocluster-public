@@ -1,3 +1,12 @@
 [flake8]
 max-line-length = 120
 ignore = F401, W503
+exclude =
+    .git,
+    __pycache__,
+    .ipynb,
+    docs/source/conf.py,
+    old,
+    build,
+    dist,
+    .ipynb_checkpoints

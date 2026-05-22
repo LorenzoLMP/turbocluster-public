@@ -1,0 +1,8 @@
+{
+    "flake8.args": [
+        "--append-config=${workspaceFolder}/.flake8"
+    ],
+    "flake8.path": [
+        "/home/lorenzolmp/miniconda3/envs/turbocluster/bin/flake8"
+    ]
+}
