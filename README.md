@@ -1,4 +1,6 @@
 [![Documentation Status](https://app.readthedocs.org/projects/turbocluster/badge/?version=latest)](https://turbocluster.readthedocs.io/en/latest/)
+[![flake8](https://github.com/LorenzoLMP/turbocluster/actions/workflows/flake8.yml/badge.svg)](
+https://github.com/LorenzoLMP/turbocluster/actions/workflows/flake8.yml)
 
 # turbocluster
 
